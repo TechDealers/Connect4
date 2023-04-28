@@ -1,4 +1,3 @@
-#include "F4Client.h"
 #include <stdio.h>
 
 void drawBoard(char **B, int rows, int cols) {
