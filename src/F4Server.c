@@ -79,4 +79,20 @@ int main(int argc, char **argv) {
         printf("semctl SETALL failed in main");
         exit(-1);
     }
+
+    int row = atoi(argv[1]);
+    int col = atoi(argv[2]);
+
+    //predisponi memoria condivisa
+    int memid = shmget(MEMKEY, sizeof(char) * row * col, O_CREAT | S_IRUSR | S_IWUSR);
+    if(memid == -1){
+        printf("shmget() failed\n");
+        exit(-1);
+    }
+    char **board = shmat(memid, NULL, 0);
+
+    if(board == NULL){
+        printf("shmat() failed\n");
+        exit(-1);
+    }
 }
