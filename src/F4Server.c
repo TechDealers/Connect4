@@ -63,4 +63,20 @@ void check_args(int argc, char* argv[]){
 int main(int argc, char **argv) {
     //controllo argomenti
     check_args(argc, argv);
+
+    int semid = semget(SEMKEY, 3, IPC_CREAT | SEM_A | SEM_R | (SEM_R>>3) | (SEM_A>>3));
+    if (semid == -1){
+        printf("semget failed");
+        exit(-1);
+    }
+    // Initialize the semaphore set
+    // semClients = 0, semServer = 1
+    unsigned short semInitVal[] = { 1, 0, 0};
+    union semun arg;
+    arg.array = semInitVal;
+
+    if (semctl(semid, 0 /*ignored*/, SETALL, arg) == -1){
+        printf("semctl SETALL failed in main");
+        exit(-1);
+    }
 }
