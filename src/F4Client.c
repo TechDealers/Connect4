@@ -1,38 +1,40 @@
 #include <stdio.h>
 
+void drawBoard(char **B, int rows, int cols);
+
+int main(int argc, char **argv) {}
+
+// TODO: Forse sarebbe meglio passare il memid al posto
+// della matrice?
 void drawBoard(char **B, int rows, int cols) {
     // top border
-    printf("┌");
+    printf("┌─");
     for (int i = 0; i < cols - 1; ++i) {
-        printf("─┬");
+        printf("──┬─");
     }
-    printf("─┐\n");
+    printf("──┐\n");
 
-    // player symbols
     for (int i = 0; i < rows; ++i) {
-        // left border
-        printf("│");
+        // player symbols
         for (int j = 0; j < cols; ++j) {
-            printf("%c│", B[i][j]);
+            printf("│ %c ", B[i][j]);
         }
+        printf("│\n");
 
+        // middle borders
         if (i < rows - 1) {
-            printf("\n├");
+            printf("├─");
             for (int j = 0; j < cols - 1; ++j) {
-                printf("─┼");
+                printf("──┼─");
             }
-            // right border
-            printf("─┤");
+            printf("──┤\n");
         }
-        printf("\n");
     }
 
     // bottom border
-    printf("└");
+    printf("└─");
     for (int i = 0; i < cols - 1; ++i) {
-        printf("─┴");
+        printf("──┴─");
     }
-    printf("─┘\n");
+    printf("──┘\n");
 }
-
-int main(int argc, char **argv) {}
