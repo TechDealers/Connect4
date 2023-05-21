@@ -60,6 +60,63 @@ void check_args(int argc, char* argv[]){
     }
 
 }
+bool outOfBounds(int i, int j, int rows, int cols) {
+    return j < 0 || j > cols - 1 || i < 0 || i > rows - 1;
+}
+
+int countInDirection(char *B, char symbol, int dx, int dy, int i, int j,
+                     int rows, int cols) {
+    int count = 0;
+    while (!outOfBounds(i, j, rows, cols) && B[(i * cols) + j] == symbol) {
+        i += dy;
+        j += dx;
+        count++;
+    }
+    return count;
+}
+
+bool gameOver(char *B, int i, int j, int rows, int cols) {
+    bool won = false;
+    char symbol = B[(i * cols) + j];
+
+    for (int dx = -1; dx <= 1; ++dx) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            int count = countInDirection(B, symbol, dx, dy, i, j, rows, cols) +
+                        countInDirection(B, symbol, -dx, -dy, i - dy, j - dx,
+                                         rows, cols);
+            won |= count >= 4;
+            if (won) {
+                goto exit;
+            }
+        }
+    }
+
+exit:
+    return won;
+}
+
+enum MoveResult insertSymbol(char *B, char symbol, int j, int rows, int cols) {
+    // colonna non valida
+    if (outOfBounds(0, j, rows, cols)) {
+        return COLINVALID;
+    }
+
+    int i = rows - 1;
+    // trova la prima riga libera nella colonna 'j'
+    while (B[(i * cols) + j] != ' ' && --i >= 0)
+        ;
+    if (i < 0) {
+        return COLFULL;
+    }
+
+    B[(i * cols) + j] = symbol;
+
+    return gameOver(B, i, j, rows, cols) ? GAMEOVER : CONTINUE;
+}
+
 int main(int argc, char **argv) {
     //controllo argomenti
     check_args(argc, argv);
