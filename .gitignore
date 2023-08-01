@@ -1,4 +1,5 @@
 bin/
 .cache/
 .direnv/
+.devenv/
 compile_commands.json

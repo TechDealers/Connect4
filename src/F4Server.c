@@ -1,23 +1,26 @@
-#include "F4lib.h"
-#include <sys/types.h>
-#include <sys/ipc.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <fcntl.h>
-
-#include <errno.h>
-#include <sys/shm.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 #include <sys/sem.h>
-#include <sys/wait.h>
+#include <sys/shm.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include "F4Server.h"
+#include "F4lib.h"
 
 void print_usage() {
-    printf("Usage: ./F4Server {rows} {cols} {player1_symbol} {player2_symbol}\n");
+    printf(
+        "Usage: ./F4Server {rows} {cols} {player1_symbol} {player2_symbol}\n");
 }
-void check_args(int argc, char* argv[]){
-    if(argc != 5) {
+
+void check_args(int argc, char *argv[]) {
+    if (argc != 5) {
         print_usage();
         exit(-1);
     }
@@ -29,7 +32,6 @@ void check_args(int argc, char* argv[]){
         print_usage();
         exit(-1);
     }
-
 
     int col = atoi(argv[2]);
     if (col == 0) {
@@ -58,8 +60,26 @@ void check_args(int argc, char* argv[]){
         print_usage();
         exit(-1);
     }
-
 }
+
+void errExit(const char *msg) {
+    perror(msg);
+    cleanResources();
+    exit(1);
+}
+
+void cleanResources() {
+    printf("\ncleaning resources\n");
+    shmdt(board);
+    shmctl(board_shmid, IPC_RMID, NULL);
+    shmdt(game);
+    shmctl(game_shmid, IPC_RMID, NULL);
+    msgctl(game_msqid, IPC_RMID, NULL);
+    msgctl(new_connection_msqid, IPC_RMID, NULL);
+    shmdt(client_data);
+    shmctl(client_data_shmid, IPC_RMID, NULL);
+}
+
 bool outOfBounds(int i, int j, int rows, int cols) {
     return j < 0 || j > cols - 1 || i < 0 || i > rows - 1;
 }
@@ -75,6 +95,25 @@ int countInDirection(char *B, char symbol, int dx, int dy, int i, int j,
     return count;
 }
 
+// cerco coppie uguale nella direzione opposta e
+// aggiorno opportunamente i e j
+//
+// esempio:
+//
+//    │
+//    ▼
+//    X
+// ┌─┬─┬─┬─┬─┐
+// │ │ │ │ │ │
+// ├─────────┤
+// │ │ │ │X│ │
+// ├─────────┤
+// │ │ │X│O│ │
+// ├─────────┤
+// │ │ │O│O│ │
+// ├─────────┤
+// │X│O│O│O│ │
+// └─┴─┴─┴─┴─┘
 bool gameOver(char *B, int i, int j, int rows, int cols) {
     bool won = false;
     char symbol = B[(i * cols) + j];
@@ -98,7 +137,7 @@ exit:
     return won;
 }
 
-enum MoveResult insertSymbol(char *B, char symbol, int j, int rows, int cols) {
+enum GameMsgType insertSymbol(char *B, char symbol, int j, int rows, int cols) {
     // colonna non valida
     if (outOfBounds(0, j, rows, cols)) {
         return COLINVALID;
@@ -117,39 +156,135 @@ enum MoveResult insertSymbol(char *B, char symbol, int j, int rows, int cols) {
     return gameOver(B, i, j, rows, cols) ? GAMEOVER : CONTINUE;
 }
 
+void siginthandler(int code) { cleanResources(); }
+
+void accept_connections() {
+    while (game->num_players < 2) {
+        game->num_players++;
+
+        NewConnectionMsg new_connection_msg;
+
+        printf("waiting for new connections\n");
+        new_connection_msgrcv(new_connection_msqid, &new_connection_msg);
+        char *name = new_connection_msg.mdata.req.name;
+        printf("name = %s, num_players = %d\n", name, game->num_players);
+
+        if (game->num_players == 1) {
+            strcpy(game->players[game->num_players - 1], name);
+
+            new_connection_msg.mtype = NewConnectionReq;
+            new_connection_msg.mdata.res.game_shmid = game_shmid;
+            new_connection_msg.mdata.res.game_msqid = game_msqid;
+            new_connection_msg.mdata.res.player_semid = 42069;
+            new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
+        } else {
+            strcpy(game->players[game->num_players - 1], name);
+
+            if (strcmp(game->players[game->num_players - 1],
+                       game->players[game->num_players - 2]) == 0) {
+                game->num_players--;
+
+                // new_connection_set_error(&new_connection_msg);
+                new_connection_msg.mtype = NameAlreadyTaken;
+                new_connection_msg.mdata.res.game_msqid = -1;
+                new_connection_msg.mdata.res.game_shmid = -1;
+                new_connection_msg.mdata.res.player_semid = -1;
+                new_connection_msgsnd(new_connection_msqid,
+                                      &new_connection_msg);
+            } else {
+                // game init
+                // release first player, suspend second player
+                // new_connection_set_resources(&new_connection_msg);
+                new_connection_msg.mtype = NewConnectionReq;
+                new_connection_msg.mdata.res.game_shmid = game_shmid;
+                new_connection_msg.mdata.res.game_msqid = game_msqid;
+                new_connection_msg.mdata.res.player_semid = 42069;
+                new_connection_msgsnd(new_connection_msqid,
+                                      &new_connection_msg);
+            }
+        }
+    }
+}
+
 int main(int argc, char **argv) {
-    //controllo argomenti
-    check_args(argc, argv);
+    signal(SIGINT, siginthandler);
 
-    int semid = semget(SEMKEY, 3, IPC_CREAT | SEM_A | SEM_R | (SEM_R>>3) | (SEM_A>>3));
-    if (semid == -1){
-        printf("semget failed");
-        exit(-1);
+    //     ' ', ' ', ' ', ' ', ' ',
+    //     ' ', ' ', 'O', 'X', ' ',
+    //     'X', ' ', 'X', ' ', ' ',
+    //     'X', ' ', 'O', 'O', 'O',
+    //     'X', 'O', ' ', 'O', ' ',
+    // };
+    //
+    // switch (insertSymbol(board, 'X', 1, 5, 5)) {
+    // case COLINVALID: {
+    //     printf("COLNOTVALID\n");
+    //     break;
+    // }
+    // case COLFULL: {
+    //     printf("COLNOTEMPTY\n");
+    //     break;
+    // }
+    // case GAMEOVER: {
+    //     printf("GAMEOVER\n");
+    //     break;
+    // }
+    // case CONTINUE:
+    //     printf("CONTINUE\n");
+    //     break;
+    // }
+
+    int rows = 5;
+    int cols = 5;
+    // int rows = atoi(argv[1]);
+    // int cols = atoi(argv[2]);
+
+    // initialize global variables
+    new_connection_msqid =
+        msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
+    game_msqid = msgget(GAME_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
+    game_shmid =
+        shmget(GAME_SHMKEY, sizeof(Game), IPC_CREAT | S_IRUSR | S_IWUSR);
+    board_shmid = shmget(BOARD_SHMKEY, sizeof(char) * rows * cols,
+                         IPC_CREAT | S_IRUSR | S_IWUSR);
+    client_data_shmid = shmget(CLIENT_DATA_SHMKEY, sizeof(ClientData),
+                               IPC_CREAT | S_IRUSR | S_IWUSR);
+    game = shmat(game_shmid, NULL, 0);
+    board = shmat(board_shmid, NULL, 0);
+    client_data = shmat(client_data_shmid, NULL, SHM_RDONLY);
+
+    printf("game_shmid = %d, game_msqid = %d, board_shmid = %d\n", game_shmid,
+           game_msqid, board_shmid);
+
+    // initialize game state
+    game->board_shmid = board_shmid;
+    game->board_rows = rows;
+    game->board_cols = cols;
+    game->num_players = 0;
+    game->turn = 0;
+
+    // initialize board array
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            board[(i * cols) + j] = ' ';
+        }
     }
-    // Initialize the semaphore set
-    // semClients = 0, semServer = 1
-    unsigned short semInitVal[] = { 1, 0, 0};
-    union semun arg;
-    arg.array = semInitVal;
 
-    if (semctl(semid, 0 /*ignored*/, SETALL, arg) == -1){
-        printf("semctl SETALL failed in main");
-        exit(-1);
-    }
+    accept_connections();
 
-    int row = atoi(argv[1]);
-    int col = atoi(argv[2]);
-
-    //predisponi memoria condivisa
-    int memid = shmget(MEMKEY, sizeof(char) * row * col, O_CREAT | S_IRUSR | S_IWUSR);
-    if(memid == -1){
-        printf("shmget() failed\n");
-        exit(-1);
-    }
-    char **board = shmat(memid, NULL, 0);
-
-    if(board == NULL){
-        printf("shmat() failed\n");
-        exit(-1);
+    printf("waiting for player moves\n");
+    // struct semid_ds sem_players[2];
+    GameMsg msg;
+    while (game_msgrcv(game_msqid, &msg) != -1) {
+        switch (msg.mtype) {
+        case MOVE: {
+        }
+        case DISCONNECT: {
+            // accept_connections();
+        }
+        default: {
+            break;
+        }
+        }
     }
 }
