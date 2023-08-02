@@ -14,9 +14,10 @@
 #include <stdlib.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
+#include <stdarg.h>
+#include <stdio.h>
 
-#define SEMKEY 48
-
+#define MAX_PLAYERS 2
 #define BREAKPOINT                                                             \
     printf("\nLine Number %s->%s:%d\n\n", __FILE__, __FUNCTION__, __LINE__)
 
@@ -24,15 +25,27 @@
  * of a semaphore set. semid is a semaphore set identifier, sem_num is the
  * index of a semaphore in the set, sem_op is the operation performed on sem_num
  */
-void semOp(int semid, unsigned short sem_num, short sem_op);
-void errExit(const char *msg);
+void info(const char *format, ...);
+void sem_op(int semid, unsigned short sem_num, short sem_op);
+void err_exit(const char *msg);
+
+void sem_wait(int semid);
+void sem_release(int semid);
 
 #define NEW_CONNECTION_MSGKEY ftok("src/F4Server.c", 1)
 
 #define STRSIZE 32
 
 typedef struct {
-    char players[2][STRSIZE];
+    char name[STRSIZE];
+    int player_semid;
+    char token;
+} Player;
+
+typedef struct {
+    Player players[2];
+    char tokens[2];
+
     int num_players;
     int board_shmid;
     int board_rows;
@@ -73,11 +86,22 @@ enum GameMsgType {
     GAMEOVER,
     CONTINUE,
 };
-typedef struct {
-    long mtype;
 
-    void *mdata;
+typedef struct {
+    int player_semid;
+    struct {
+        int col; // -1
+        char token; // ''
+    } move;
+} MoveData;
+
+typedef struct {
+    long mtype; // One of enum GameMsgType
+
+    // Game msg struct
+    MoveData mdata;
 } GameMsg;
+
 int game_msgsnd(int game_msqid, GameMsg *msg);
 int game_msgrcv(int game_msqid, GameMsg *msg);
 

@@ -19,15 +19,22 @@ ClientData *client_data;
 int new_connection_msqid;
 int game_msqid;
 
-bool outOfBounds(int i, int j, int rows, int cols);
+bool out_of_bounds(int i, int j);
 
-int countInDirection(char *B, char symbol, int dx, int dy, int i, int j,
-                     int rows, int cols);
+int count_in_direction(char *B, char symbol, int dx, int dy, int i, int j);
 
-bool gameOver(char *B, int i, int j, int rows, int cols);
+bool game_over(char *B, int i, int j);
 
-enum GameMsgType insertSymbol(char *B, char symbol, int j, int rows, int cols);
+enum GameMsgType insert_symbol(char *B, char symbol, int j);
 
-void cleanResources();
+void clear_resources();
+
+union semun {
+    int              val;    /* Value for SETVAL */
+    struct semid_ds *buf;    /* Buffer for IPC_STAT, IPC_SET */
+    unsigned short  *array;  /* Array for GETALL, SETALL */
+    struct seminfo  *__buf;  /* Buffer for IPC_INFO
+                                (Linux-specific) */
+};
 
 #endif
