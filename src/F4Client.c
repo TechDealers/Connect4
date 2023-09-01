@@ -8,6 +8,7 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include "F4Client.h"
 #include "F4lib.h"
@@ -17,7 +18,13 @@ void err_exit(const char *msg) {
     exit(1);
 }
 
+void sigusrhandler(int code) {
+    printf("\nGame is shutting down!\n");
+    exit(0);
+}
+
 void siginthandler(int code) {
+    info("\nUser abandoned the game!\n");
     GameMsg msg = {
         .mtype = Disconnect,
         .mdata = {
@@ -30,9 +37,11 @@ void siginthandler(int code) {
     };
     
     game_msgsnd(resources.game_msqid, &msg);
+    exit(0);
 }
 
 int main(int argc, char **argv) {
+    signal(SIGUSR1, sigusrhandler);
     signal(SIGINT, siginthandler);
 
     // Get new connection queue
@@ -50,6 +59,8 @@ int main(int argc, char **argv) {
         new_connection_msg.mtype = NewConnection;
         // Copy name to msg
         strcpy(new_connection_msg.mdata.req.name, name);
+        // send pid to server
+        new_connection_msg.mdata.req.pid = getpid();
         // Send msg
         new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
         // Receive confirmation or error
@@ -75,12 +86,17 @@ int main(int argc, char **argv) {
     while (true) {
         // Block semaphore
         info("Waiting for the next player...\n");
-        sem_wait(data.player_semid);
+        sem_wait(data.semid);
 
         draw_board(board, game->board_rows, game->board_cols);
 
         if (game->game_over) {
-            if (strcmp(data.name, game->winner) == 0) {
+            if (game->num_players == 1) {
+                info("Player Disconnected!\n");
+                info("YOU WIN!\n");
+            } else if (strcmp(game->winner, "\0") == 0) {
+                info("DRAW\n");
+            } else if (strcmp(data.name, game->winner) == 0) {
                 info("YOU WIN!\n");
             } else {
                 info("YOU LOSE!\n");
@@ -102,7 +118,7 @@ int main(int argc, char **argv) {
             msg.mtype = Move;
             msg.mdata.move.col = col;
             msg.mdata.move.token = data.token;
-            msg.mdata.player_id = data.player_semid;
+            msg.mdata.player_id = data.semid;
 
             // send move
             if (game->num_players < 2) {

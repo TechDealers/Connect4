@@ -51,6 +51,7 @@ int new_connection_msgrcv(int new_connection_msqid, NewConnectionMsg *msg) {
 int game_msgsnd(int game_msqid, GameMsg *msg) {
     int ret = msgsnd(game_msqid, msg, sizeof(GameMsg) - sizeof(long), 0);
 
+    
     if (ret == -1) {
         err_exit("game_msgsnd");
     }

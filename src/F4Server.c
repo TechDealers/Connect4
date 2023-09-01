@@ -1,6 +1,9 @@
 #include <string.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
+#include <stdio.h>
+#include <signal.h>
+#include <unistd.h>
 
 #include "F4Server.h"
 #include "F4lib.h"
@@ -54,13 +57,35 @@ void check_args(int argc, char *argv[]) {
 }
 
 void err_exit(const char *msg) {
+    if (errno == EINTR) {
+        return;
+    }
     perror(msg);
     clear_resources();
     exit(1);
 }
 
+void exithandler(int sig) {
+    // Announce to players game will shutdown
+    for (int i = 0; i < 2; ++i){
+        int pid = game->players[i].pid;
+        if(kill(pid, SIGUSR1) == -1) {
+            info("Failed to send signal\n");
+        }
+    }
+    clear_resources();
+    exit(0);
+}
+
+
+void warnhandler(int sig) {
+    // sigint_received = 1;
+    info("Press Ctrl+C again to terminate the program\n");
+    // signal(sig, SIG_IGN);
+    signal(sig, exithandler);
+}
 void clear_resources() {
-    info("\n");
+    printf("\n");
 
     // Shared Memory for board
     info("cleaning board shm\n");
@@ -70,7 +95,7 @@ void clear_resources() {
     // Semaphores
     info("cleaning semaphores\n");
     for (int i = 0; i < 2; ++i) {
-        semctl(game->players[i].player_semid, 0, IPC_RMID);
+        semctl(game->players[i].semid, 0, IPC_RMID);
     }
 
     // Shared Memory for game data
@@ -146,15 +171,14 @@ exit:
 }
 
 bool game_tie(char *B) {
-    bool tied = false;
+    bool tied = true;
 
-    for (int j = 0; j < game->board_cols - 1; ++j) {
-        if (B[game->board_rows * j] != ' ') {
-            tied = true;
+    for (int j = 0; j < game->board_cols; ++j) {
+        if (B[j] == ' ') {
+            tied = false;
             break;
         }
     }
-
     return tied;
 }
 
@@ -180,8 +204,6 @@ enum GameMsgType insert_symbol(char *B, char symbol, int j) {
     return game_over(B, i, j) ? GameOver : game_tie(B) ? GameTie : Continue;
 }
 
-void siginthandler(int code) { clear_resources(); }
-
 void init_player(NewConnectionMsg *msg, int player_id) {
     game->num_players++;
     strcpy(game->players[player_id].name, msg->mdata.req.name);
@@ -190,7 +212,9 @@ void init_player(NewConnectionMsg *msg, int player_id) {
     int sem = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
     semctl(sem, 0, SETVAL, 0);
     // Save semid to game
-    game->players[player_id].player_semid = sem;
+    game->players[player_id].semid = sem;
+    // Save player's pid
+    game->players[player_id].pid = msg->mdata.req.pid;
 
     msg->mtype = NewConnection;
     // Send unique player id to client
@@ -249,7 +273,7 @@ void init_board(char *B) {
 }
 
 int main(int argc, char **argv) {
-    signal(SIGINT, siginthandler);
+    signal(SIGINT, warnhandler);
 
     // Check arguments
     check_args(argc, argv);
@@ -293,7 +317,7 @@ int main(int argc, char **argv) {
 
         // Get current player info
         int curr_player_semid =
-            game->players[game->curr_player_id].player_semid;
+            game->players[game->curr_player_id].semid;
         char *username = game->players[game->curr_player_id].name;
 
         info("Unlocking player: %d\n", curr_player_semid);
@@ -314,6 +338,21 @@ int main(int argc, char **argv) {
                 GameMsgData md = msg.mdata;
                 msg.mtype = insert_symbol(board, md.move.token, md.move.col);
 
+                if (msg.mtype == GameTie) {
+                    printf("Skill Issue\n");
+                    strcpy(game->winner, "\0");
+                    // Set global game over
+                    game->game_over = true;
+                    game_msgsnd(game_msqid, &msg);
+                    info("Game Tie!\n");
+
+                    // release both clients so they can exit gracefully
+                    for (int i = 0; i < 2; ++i) {
+                        sem_release(game->players[i].semid);
+                    }
+                    break;
+                }
+
                 // Game over
                 if (msg.mtype == GameOver) {
                     info("%s is the winner!\n", username);
@@ -328,10 +367,11 @@ int main(int argc, char **argv) {
 
                     // release both clients so they can exit gracefully
                     for (int i = 0; i < 2; ++i) {
-                        sem_release(game->players[i].player_semid);
+                        sem_release(game->players[i].semid);
                     }
                     break;
                 }
+
 
                 // Handle user turns
                 if (msg.mtype == Continue) {
@@ -346,13 +386,13 @@ int main(int argc, char **argv) {
             }
             case Disconnect: {
                 info("Player %lu disconnected\n", msg.mdata.player_id);
-                // decrementa il numero di giocatori
+                int other_player_id = (msg.mdata.player_id + 1) % 2;
+                strcpy(game->winner, game->players[other_player_id].name);
+                game->game_over = true;
                 game->num_players--;
-                // resetta il campo
-                init_board(board);
-
-                // aspetta nuove connessioni
-                accept_conn();
+                sem_release(game->players[other_player_id].semid);
+                msg.mtype = Disconnect;
+                game_msgsnd(game_msqid, &msg);
                 break;
             }
             default: {

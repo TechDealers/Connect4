@@ -37,7 +37,8 @@ void sem_release(int semid);
 
 typedef struct {
     char name[STRSIZE];
-    int player_semid;
+    int semid;
+    int pid;
     char token;
 } Player;
 
@@ -66,6 +67,7 @@ typedef struct {
     union {
         struct {
             char name[STRSIZE];
+            int pid;
         } req;
 
         Resources res;
