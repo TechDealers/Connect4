@@ -7,31 +7,47 @@
 #include <sys/msg.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include "F4Client.h"
 #include "F4lib.h"
-#include "unistd.h"
 
 void err_exit(const char *msg) {
     perror(msg);
     exit(1);
 }
 
+void siginthandler(int code) {
+    GameMsg msg = {
+        .mtype = Disconnect,
+        .mdata = {
+            .player_id = resources.player_id,
+            .move = {
+                .col = -1,
+                .token = '\0'
+            }
+        }
+    };
+    
+    game_msgsnd(resources.game_msqid, &msg);
+}
 
 int main(int argc, char **argv) {
-    // Create new connection obj
-    NewConnectionMsg new_connection_msg;
+    signal(SIGINT, siginthandler);
 
     // Get new connection queue
-    int new_connection_msqid = msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
+    int new_connection_msqid =
+        msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
 
+    // Create new connection obj
+    NewConnectionMsg new_connection_msg;
     bool invalid = false; // is username valid?
+    char name[STRSIZE];
     do {
-        char name[STRSIZE];
         printf("Insert your username (MAX 32 characters): ");
         scanf("%s", name);
 
-        new_connection_msg.mtype = NewConnectionReq;
+        new_connection_msg.mtype = NewConnection;
         // Copy name to msg
         strcpy(new_connection_msg.mdata.req.name, name);
         // Send msg
@@ -46,97 +62,98 @@ int main(int argc, char **argv) {
     } while (invalid);
 
     // Get game resources
-    Resources resources = new_connection_msg.mdata.res;
-    Game *game;
-    char *board;
-    ClientData *client_data;
+    resources = new_connection_msg.mdata.res;
 
-    // Init shared memory
-    game = shmat(resources.game_shmid, NULL, SHM_RDONLY);
-    board = shmat(game->board_shmid, NULL, SHM_RDONLY);
-    client_data = shmat(game->client_data_shmid, NULL, 0);
+    // init shared memory
+    Game *game = shmat(resources.game_shmid, NULL, SHM_RDONLY);
+    char *board = shmat(game->board_shmid, NULL, SHM_RDONLY);
 
-    do {
-        info("Waiting for the next player to make a move...\n");
+    // init client data
+    Player data = game->players[resources.player_id];
+    strcpy(data.name, name);
+
+    while (true) {
         // Block semaphore
-        sem_wait(resources.player_semid);
+        info("Waiting for the next player...\n");
+        sem_wait(data.player_semid);
 
-        info("Your turn!\n");
-
-        // Draw a board
         draw_board(board, game->board_rows, game->board_cols);
+
+        if (game->game_over) {
+            if (strcmp(data.name, game->winner) == 0) {
+                info("YOU WIN!\n");
+            } else {
+                info("YOU LOSE!\n");
+            }
+            info("#######################\n");
+            info("GAMEOVER\n");
+            break;
+        }
 
         GameMsg msg;
         do {
             int col;
+
             // Ask user for input
             info("Insert column: ");
             scanf("%d", &col);
 
             // Send move to server
-            msg.mtype = MOVE;
+            msg.mtype = Move;
             msg.mdata.move.col = col;
-            msg.mdata.move.token = game->players[game->turn].token;
-            msg.mdata.player_semid = resources.player_semid;
+            msg.mdata.move.token = data.token;
+            msg.mdata.player_id = data.player_semid;
 
-            if (game_msgsnd(resources.game_msqid, &msg) != -1) {
-                if (game_msgrcv(resources.game_msqid, &msg) != -1){
-                    switch (msg.mtype) {
-                        case CONTINUE:
-                            break;
-                        
-                        case GAMEOVER:
-                            if (msg.mdata.player_semid == resources.player_semid) {
-                                info("YOU WIN!\n");
-                            } else {
-                                info("YOU LOSE!\n");
-                            }
-                            info("#######################\n");
-                            info("GAMEOVER\n");
-                        
-                        default:
-                            break;
-                        
-                    }
-                }
-            }
-        } while(msg.mtype == COLFULL || msg.mtype == COLINVALID);
+            // send move
+            if (game->num_players < 2) {
+                info("Move ignored, not enough players.\n");
+                break;
+            } 
+            game_msgsnd(resources.game_msqid, &msg);
+            // wait for server response
+            game_msgrcv(resources.game_msqid, &msg);
+
+
+   
+        } while (msg.mtype == ColFull || msg.mtype == ColInvalid);
+
         draw_board(board, game->board_rows, game->board_cols);
-    } while(1);
+    }
 }
 
 void draw_board(char *B, int rows, int cols) {
     // Clear screen
-    info("\033[2J\033[H");
+    printf("\033[2J\033[H");
 
     // top border
-    info("┌─");
+    printf("┌─");
     for (int i = 0; i < cols - 1; ++i) {
-        info("──┬─");
+        printf("──┬─");
     }
-    info("──┐\n");
+    printf("──┐\n");
 
     for (int i = 0; i < rows; ++i) {
         // player symbols
         for (int j = 0; j < cols; ++j) {
-            info("│ %c ", B[(i * cols) + j]);
+            printf("│ %c ", B[(i * cols) + j]);
         }
-        info("│\n");
+        printf("│\n");
 
         // middle borders
         if (i < rows - 1) {
-            info("├─");
+            printf("├─");
             for (int j = 0; j < cols - 1; ++j) {
-                info("──┼─");
+                printf("──┼─");
             }
-            info("──┤\n");
+            printf("──┤\n");
         }
     }
 
     // bottom border
-    info("└─");
+    printf("└─");
     for (int i = 0; i < cols - 1; ++i) {
-        info("──┴─");
+        printf("──┴─");
     }
-    info("──┘\n");
+    printf("──┘\n");
 }
+

@@ -9,13 +9,12 @@
 #define F4lib_h
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
-#include <stdarg.h>
-#include <stdio.h>
 
 #define MAX_PLAYERS 2
 #define BREAKPOINT                                                             \
@@ -44,25 +43,23 @@ typedef struct {
 
 typedef struct {
     Player players[2];
-    char tokens[2];
 
+    int curr_player_id;
     int num_players;
     int board_shmid;
     int board_rows;
     int board_cols;
-    int client_data_shmid;
     bool game_over;
     char winner[STRSIZE];
-    int turn;
 } Game;
 
 typedef struct {
     int game_shmid;
     int game_msqid;
-    int player_semid;
+    int player_id;
 } Resources;
 
-enum NewConnectionMsgType { NewConnectionReq = 1, NameAlreadyTaken = 2 };
+enum NewConnectionMsgType { NewConnection = 1, NameAlreadyTaken = 2 };
 typedef struct {
     long mtype;
 
@@ -78,37 +75,65 @@ int new_connection_msgrcv(int new_connection_msqid, NewConnectionMsg *msg);
 int new_connection_msgsnd(int new_connection_msqid, NewConnectionMsg *msg);
 
 enum GameMsgType {
-    NIL = 1,
-    MOVE,
-    DISCONNECT,
-    COLINVALID,
-    COLFULL,
-    GAMEOVER,
-    CONTINUE,
+    Nil = 1,
+    Move,
+    Disconnect,
+    ColInvalid,
+    ColFull,
+    GameOver,
+    GameTie,
+    Continue,
 };
 
+typedef enum GameMsgType MsgKind;
+
 typedef struct {
-    int player_semid;
+    long mtype;
+
+    union {
+        union {
+            struct {
+                char name[STRSIZE];
+            } req;
+
+            Resources res;
+        } new_connection;
+
+        union {
+            struct {
+                int player_id;
+            } req;
+
+            void *res;
+        } disconnect;
+
+        union {
+            struct {
+                int player_id;
+                int col;
+            } req;
+
+            MsgKind res;
+        } move;
+    } mdata;
+} Msg;
+
+typedef struct {
+    int player_id;
     struct {
-        int col; // -1
-        char token; // ''
+        int col;    // -1
+        char token; // '\0'
     } move;
-} MoveData;
+} GameMsgData;
 
 typedef struct {
     long mtype; // One of enum GameMsgType
 
     // Game msg struct
-    MoveData mdata;
+    GameMsgData mdata;
 } GameMsg;
 
 int game_msgsnd(int game_msqid, GameMsg *msg);
 int game_msgrcv(int game_msqid, GameMsg *msg);
-
-
-typedef struct {
-    int id;
-    int move;
-} ClientData;
 
 #endif

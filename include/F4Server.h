@@ -1,8 +1,8 @@
 #ifndef F4Server_h
 #define F4Server_h
 
+#include <unistd.h>
 #include "F4lib.h"
-#include <stdbool.h>
 
 #define GAME_SHMKEY ftok("src/F4Server.c", getpid() + 1)
 #define GAME_MSGKEY ftok("src/F4Server.c", getpid() + 2)
@@ -14,8 +14,6 @@ int board_shmid;
 char *board;
 int game_shmid;
 Game *game;
-int client_data_shmid;
-ClientData *client_data;
 int new_connection_msqid;
 int game_msqid;
 
@@ -24,6 +22,7 @@ bool out_of_bounds(int i, int j);
 int count_in_direction(char *B, char symbol, int dx, int dy, int i, int j);
 
 bool game_over(char *B, int i, int j);
+bool game_tie(char *B);
 
 enum GameMsgType insert_symbol(char *B, char symbol, int j);
 

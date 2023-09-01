@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Debug",
             "program": "./bin/F4Server",
-            "args": ["5 5 X O"],
+            "args": ["5" ,"5" ,"X" ,"O"],
             "cwd": "${workspaceFolder}"
         },
          {

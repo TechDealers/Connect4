@@ -1,21 +1,12 @@
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/sem.h>
 #include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 
 #include "F4Server.h"
 #include "F4lib.h"
 
 void print_usage() {
-    info(
+    printf(
         "Usage: ./F4Server {rows} {cols} {player1_symbol} {player2_symbol}\n");
 }
 
@@ -72,7 +63,7 @@ void clear_resources() {
     info("\n");
 
     // Shared Memory for board
-    info("cleaning board\n");
+    info("cleaning board shm\n");
     shmdt(board);
     shmctl(board_shmid, IPC_RMID, NULL);
 
@@ -83,14 +74,9 @@ void clear_resources() {
     }
 
     // Shared Memory for game data
-    info("cleaning game data\n");
+    info("cleaning game shm\n");
     shmdt(game);
     shmctl(game_shmid, IPC_RMID, NULL);
-
-    // Shared Memory for client data
-    info("cleaning client data\n");
-    shmctl(client_data_shmid, IPC_RMID, NULL);
-    shmdt(client_data);
 
     // Queues
     info("cleaning queues\n");
@@ -159,13 +145,26 @@ exit:
     return won;
 }
 
+bool game_tie(char *B) {
+    bool tied = false;
+
+    for (int j = 0; j < game->board_cols - 1; ++j) {
+        if (B[game->board_rows * j] != ' ') {
+            tied = true;
+            break;
+        }
+    }
+
+    return tied;
+}
+
 enum GameMsgType insert_symbol(char *B, char symbol, int j) {
     int rows = game->board_rows;
     int cols = game->board_cols;
 
     // colonna non valida
     if (out_of_bounds(0, j)) {
-        return COLINVALID;
+        return ColInvalid;
     }
 
     int i = rows - 1;
@@ -173,78 +172,71 @@ enum GameMsgType insert_symbol(char *B, char symbol, int j) {
     while (B[(i * cols) + j] != ' ' && --i >= 0)
         ;
     if (i < 0) {
-        return COLFULL;
+        return ColFull;
     }
 
     B[(i * cols) + j] = symbol;
 
-    return game_over(B, i, j) ? GAMEOVER : CONTINUE;
+    return game_over(B, i, j) ? GameOver : game_tie(B) ? GameTie : Continue;
 }
 
 void siginthandler(int code) { clear_resources(); }
 
-void init_player(char *name, NewConnectionMsg msg, int num_player){
-    strcpy(game->players[game->num_players - 1].name, name);
-    
-    // Save SemaphoreID
-    int sem = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
-    // Save id to game
-    game->players[game->num_players - 1].player_semid = sem;
-    // Send semaphore id to client
-    msg.mdata.res.player_semid = sem;
+void init_player(NewConnectionMsg *msg, int player_id) {
+    game->num_players++;
+    strcpy(game->players[player_id].name, msg->mdata.req.name);
+
     // initialize semaphore to 0
+    int sem = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
     semctl(sem, 0, SETVAL, 0);
+    // Save semid to game
+    game->players[player_id].player_semid = sem;
 
-    // Set user token
-    game->players[game->num_players - 1].token = game->tokens[num_player]; // first player
-
-    // Set other info
-    msg.mtype = NewConnectionReq;
+    msg->mtype = NewConnection;
+    // Send unique player id to client
+    msg->mdata.res.player_id = player_id;
     // Send game info to client
-    msg.mdata.res.game_shmid = game_shmid;
-    msg.mdata.res.game_msqid = game_msqid;
+    msg->mdata.res.game_shmid = game_shmid;
+    msg->mdata.res.game_msqid = game_msqid;
 }
 
-void init_player_error(NewConnectionMsg msg, enum NewConnectionMsgType error){
-    msg.mtype = error;
-    msg.mdata.res.game_msqid = -1;
-    msg.mdata.res.game_shmid = -1;
-    msg.mdata.res.player_semid = -1;
+void init_player_error(NewConnectionMsg *msg, enum NewConnectionMsgType error) {
+    msg->mdata.res.game_msqid = -1;
+    msg->mdata.res.game_shmid = -1;
+    msg->mdata.res.player_id = -1;
+    msg->mtype = error;
 }
 
 void accept_conn() {
     while (game->num_players < 2) {
-        game->num_players++;
-
         NewConnectionMsg new_connection_msg;
 
         info("waiting for new connections\n");
         new_connection_msgrcv(new_connection_msqid, &new_connection_msg);
-        
-        char *name = new_connection_msg.mdata.req.name;
-        info("name = %s, num_players = %d\n", name, game->num_players);
-        if (game->num_players == 1) {
-            init_player(name, new_connection_msg, 0);
+
+        if (game->num_players == 0) {
+            init_player(&new_connection_msg, 0);
 
             // Send message to client
             new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
 
         } else {
-            strcpy(game->players[game->num_players - 1].name, name);
+            if (strcmp(game->players[0].name,
+                       new_connection_msg.mdata.req.name) == 0) {
+                init_player_error(&new_connection_msg, NameAlreadyTaken);
 
-            if (strcmp(game->players[game->num_players - 1].name, game->players[game->num_players - 2].name) == 0) {
-                game->num_players--;
-
-                init_player_error(new_connection_msg, NameAlreadyTaken);
-
-                new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
+                new_connection_msgsnd(new_connection_msqid,
+                                      &new_connection_msg);
             } else {
-                init_player(name, new_connection_msg, 1);
+                init_player(&new_connection_msg, 1);
 
                 // Send message to client
-                new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
+                new_connection_msgsnd(new_connection_msqid,
+                                      &new_connection_msg);
             }
         }
+        info("name = %s, num_players = %d\n",
+             game->players[game->num_players - 1].name, game->num_players);
     }
 }
 
@@ -263,91 +255,111 @@ int main(int argc, char **argv) {
     check_args(argc, argv);
 
     // init queues
-    new_connection_msqid = msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
+    new_connection_msqid =
+        msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
     game_msqid = msgget(GAME_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
 
     // Init shared memory
-    game_shmid = shmget(GAME_SHMKEY, sizeof(Game), IPC_CREAT | S_IRUSR | S_IWUSR);
+    game_shmid =
+        shmget(GAME_SHMKEY, sizeof(Game), IPC_CREAT | S_IRUSR | S_IWUSR);
     game = shmat(game_shmid, NULL, 0);
-    
-    // Config game struct
+
+    // init board shared memory
     game->board_rows = atoi(argv[1]);
     game->board_cols = atoi(argv[2]);
-    game->num_players = 0;
-    game->turn = 0;
-    game->tokens[0] = argv[3][0];
-    game->tokens[1] = argv[4][0];
-    memset(game->winner, 0, sizeof(char) * 32); // Set winner as null as char[32]
-    game->game_over = false;
-
-    // Init shared board
-    board_shmid = shmget(BOARD_SHMKEY, sizeof(char) * game->board_rows * game->board_cols, IPC_CREAT | S_IRUSR | S_IWUSR);
-    board = shmat(board_shmid, NULL, 0);
-
-    // Config game
-    game->board_shmid = board_shmid;
-
-    // // initialize global variables
-    // client_data_shmid = shmget(CLIENT_DATA_SHMKEY, sizeof(ClientData), IPC_CREAT | S_IRUSR | S_IWUSR);
-    // client_data = shmat(client_data_shmid, NULL, SHM_RDONLY);
-
-    // initialize board array
+    game->board_shmid =
+        shmget(BOARD_SHMKEY, sizeof(char) * game->board_rows * game->board_cols,
+               IPC_CREAT | S_IRUSR | S_IWUSR);
+    board = shmat(game->board_shmid, NULL, 0);
     init_board(board);
+
+    // init game state
+    game->num_players = 0;
+    game->curr_player_id = 0;
+    game->players[0].token = *argv[3];
+    game->players[1].token = *argv[4];
+    // Set winner as null as char[32]
+    memset(game->winner, 0, sizeof(char) * 32);
+    game->game_over = false;
 
     // Connections
     accept_conn(); // Players are blocked
 
     info("Game Started!\n");
-    
+
+    int prev_player_semid = -1;
     do {
-        info("Current turn: %d\n", game->turn);
-        
+        info("Current player id: %d\n", game->curr_player_id);
+
         // Get current player info
-        int curr_player_semid = game->players[game->turn].player_semid;
-        char *username = game->players[game->turn].name;
+        int curr_player_semid =
+            game->players[game->curr_player_id].player_semid;
+        char *username = game->players[game->curr_player_id].name;
 
         info("Unlocking player: %d\n", curr_player_semid);
-        // Unlock other player's semaphore
-        sem_release(curr_player_semid);
-        
+        if (prev_player_semid == -1 ||
+            (prev_player_semid != curr_player_semid)) {
+            // Unlock other player's semaphore
+            sem_release(curr_player_semid);
+        }
+
         // Game loop
+        info("waiting for msg\n");
         GameMsg msg;
         if (game_msgrcv(game_msqid, &msg) != -1) {
+            info("message recieved, %lu\n", msg.mtype);
             switch (msg.mtype) {
-                case MOVE: {
-                    MoveData md = msg.mdata;
-                    msg.mtype = insert_symbol(board, md.move.token, md.move.col);
+            case Move: {
+                info("On Move\n");
+                GameMsgData md = msg.mdata;
+                msg.mtype = insert_symbol(board, md.move.token, md.move.col);
 
-                    // Game over
-                    if (msg.mtype == GAMEOVER) {
-                        info("%s is the winner!\n", username);
-                        // Copy user name to game->winner
-                        strcpy(game->winner, username);
-                        // Set global game over
-                        game->game_over = true;
+                // Game over
+                if (msg.mtype == GameOver) {
+                    info("%s is the winner!\n", username);
+                    // Copy user name to game->winner
+                    strcpy(game->winner, username);
+                    // Set global game over
+                    game->game_over = true;
 
-                        // Send game over message
-                        game_msgsnd(game_msqid, &msg);
-                        info("Game over!\n");
-
-                        break;
-                    }
-
-                    // Handle user turns
-                    if (msg.mtype == CONTINUE) {
-                        info("move result: %lu\n", msg.mtype);
-                        game->turn = (game->turn + 1) % 2;
-                    }
+                    // Send game over message
                     game_msgsnd(game_msqid, &msg);
+                    info("Game over!\n");
 
-                }
-                case DISCONNECT: {
-                    // accept_connections();
-                }
-                default: {
+                    // release both clients so they can exit gracefully
+                    for (int i = 0; i < 2; ++i) {
+                        sem_release(game->players[i].player_semid);
+                    }
                     break;
                 }
+
+                // Handle user turns
+                if (msg.mtype == Continue) {
+                    info("move result: %lu\n", msg.mtype);
+                    game->curr_player_id = (game->curr_player_id + 1) % 2;
+                }
+
+                game_msgsnd(game_msqid, &msg);
+
+                prev_player_semid = curr_player_semid;
+                break;
+            }
+            case Disconnect: {
+                info("Player %lu disconnected\n", msg.mdata.player_id);
+                // decrementa il numero di giocatori
+                game->num_players--;
+                // resetta il campo
+                init_board(board);
+
+                // aspetta nuove connessioni
+                accept_conn();
+                break;
+            }
+            default: {
+                info("On default\n");
+                break;
+            }
             }
         }
-    } while(!game->game_over);
+    } while (!game->game_over);
 }
