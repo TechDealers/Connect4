@@ -89,24 +89,38 @@ void clear_resources() {
 
     // Shared Memory for board
     info("cleaning board shm\n");
+    
+    if(shmctl(game->board_shmid, IPC_RMID, NULL) == -1){
+        info("Error cleaning board\n");
+    }
     shmdt(board);
-    shmctl(board_shmid, IPC_RMID, NULL);
 
     // Semaphores
     info("cleaning semaphores\n");
     for (int i = 0; i < 2; ++i) {
-        semctl(game->players[i].semid, 0, IPC_RMID);
+        if(semctl(game->players[i].semid, 0, IPC_RMID) == -1) {
+            info("Error cleaning semaphore\n");
+        }
     }
 
     // Shared Memory for game data
     info("cleaning game shm\n");
+   
+    if(shmctl(game_shmid, IPC_RMID, NULL) == -1) {
+        info("Error cleaning game\n");
+    }
     shmdt(game);
-    shmctl(game_shmid, IPC_RMID, NULL);
 
     // Queues
     info("cleaning queues\n");
-    msgctl(game_msqid, IPC_RMID, NULL);
-    msgctl(new_connection_msqid, IPC_RMID, NULL);
+    if(msgctl(game_msqid, IPC_RMID, NULL) == -1) {
+        info("Error cleaning game msqid\n");
+    }
+    if(msgctl(new_connection_msqid, IPC_RMID, NULL) == -1) {
+        info("Error cleaning new connection msqid\n");
+    }
+    
+    info("Finished cleaning\n");
 }
 
 bool out_of_bounds(int i, int j) {
@@ -369,6 +383,16 @@ int main(int argc, char **argv) {
                         for (int i = 0; i < 2; ++i) {
                             sem_release(game->players[i].semid);
                         }
+
+
+                        // we could probably block the server using another semaphore XD
+                        while(kill(game->players[game->curr_player_id].pid, 0) == 0)
+                            ;
+
+                        if (errno == ESRCH) {
+                            info("Quitting\n");
+                        }
+
                         break;
                     }
 

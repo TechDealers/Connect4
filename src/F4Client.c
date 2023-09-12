@@ -8,6 +8,7 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "F4Client.h"
@@ -40,7 +41,32 @@ void siginthandler(int code) {
     exit(0);
 }
 
+int get_random_move(int MIN, int MAX) {
+    return (rand() % (MAX - MIN + 1)) + MIN;
+}
+
 int main(int argc, char **argv) {
+    bool computer = false;
+
+    int pid = getpid();
+    
+    if (argc == 3) {
+        if(*argv[2] == '*') {
+            computer = true;
+        }
+    }
+    
+    if (computer) {
+        pid = fork();
+        if (pid == 0) {
+            close(STDOUT_FILENO);
+            // if(open("computer_stdout.txt", O_CREAT | O_TRUNC | O_APPEND | O_WRONLY, 00777) == -1) exit(-1);
+            // info("TESTING");
+            
+            srand(getpid() + time(NULL));
+        }
+    }
+
     signal(SIGUSR1, sigusrhandler);
     signal(SIGINT, siginthandler);
 
@@ -52,9 +78,13 @@ int main(int argc, char **argv) {
     NewConnectionMsg new_connection_msg;
     bool invalid = false; // is username valid?
     char name[STRSIZE];
+    if (pid == 0){
+        strcpy(name, "Computer");
+    } else {
+        strcpy(name, argv[1]);
+    }
+    
     do {
-        printf("Insert your username (MAX 32 characters): ");
-        scanf("%s", name);
 
         new_connection_msg.mtype = NewConnection;
         // Copy name to msg
@@ -70,6 +100,7 @@ int main(int argc, char **argv) {
         if (invalid) {
             info("username already taken\n");
         }
+
     } while (invalid);
 
     // Get game resources
@@ -109,10 +140,14 @@ int main(int argc, char **argv) {
         GameMsg msg;
         do {
             int col;
-
-            // Ask user for input
-            info("Insert column: ");
-            scanf("%d", &col);
+            
+            if (pid == 0){
+                col = get_random_move(0, game->board_cols - 1);
+            } else {
+                // Ask user for input
+                info("Insert column: ");
+                scanf("%d", &col);
+            }
 
             // Send move to server
             msg.mtype = Move;
@@ -132,7 +167,7 @@ int main(int argc, char **argv) {
 
    
         } while (msg.mtype == ColFull || msg.mtype == ColInvalid);
-
+        
         draw_board(board, game->board_rows, game->board_cols);
     }
 }
