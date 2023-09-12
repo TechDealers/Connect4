@@ -12,15 +12,19 @@
 #include <unistd.h>
 
 #include "F4Client.h"
-#include "F4lib.h"
 
 void err_exit(const char *msg) {
     perror(msg);
     exit(1);
 }
 
-void sigusrhandler(int code) {
+void clear_resources() {
+    semctl(data.semid, 0, IPC_RMID);
+}
+
+void sigusr1handler(int code) {
     printf("\nGame is shutting down!\n");
+    clear_resources();
     exit(0);
 }
 
@@ -38,6 +42,7 @@ void siginthandler(int code) {
     };
     
     game_msgsnd(resources.game_msqid, &msg);
+    clear_resources();
     exit(0);
 }
 
@@ -47,43 +52,39 @@ int get_random_move(int MIN, int MAX) {
 
 int main(int argc, char **argv) {
     bool computer = false;
-
     int pid = getpid();
     
-    if (argc == 3) {
-        if(*argv[2] == '*') {
+    if(argc == 3) {
+        if (*argv[2] == '*') {
             computer = true;
         }
     }
-    
+
     if (computer) {
         pid = fork();
         if (pid == 0) {
             close(STDOUT_FILENO);
-            // if(open("computer_stdout.txt", O_CREAT | O_TRUNC | O_APPEND | O_WRONLY, 00777) == -1) exit(-1);
-            // info("TESTING");
-            
-            srand(getpid() + time(NULL));
+            srand(time(NULL));
         }
     }
 
-    signal(SIGUSR1, sigusrhandler);
+    signal(SIGUSR1, sigusr1handler);
     signal(SIGINT, siginthandler);
 
     // Get new connection queue
     int new_connection_msqid =
         msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
 
-    // Create new connection obj
-    NewConnectionMsg new_connection_msg;
-    bool invalid = false; // is username valid?
     char name[STRSIZE];
     if (pid == 0){
         strcpy(name, "Computer");
     } else {
         strcpy(name, argv[1]);
     }
-    
+
+     // Create new connection obj
+    NewConnectionMsg new_connection_msg;
+    bool invalid = false; // is username valid?
     do {
 
         new_connection_msg.mtype = NewConnection;
@@ -111,7 +112,7 @@ int main(int argc, char **argv) {
     char *board = shmat(game->board_shmid, NULL, SHM_RDONLY);
 
     // init client data
-    Player data = game->players[resources.player_id];
+    data = game->players[resources.player_id];
     strcpy(data.name, name);
 
     while (true) {
@@ -163,13 +164,12 @@ int main(int argc, char **argv) {
             game_msgsnd(resources.game_msqid, &msg);
             // wait for server response
             game_msgrcv(resources.game_msqid, &msg);
-
-
-   
         } while (msg.mtype == ColFull || msg.mtype == ColInvalid);
         
         draw_board(board, game->board_rows, game->board_cols);
     }
+
+    clear_resources();
 }
 
 void draw_board(char *B, int rows, int cols) {
@@ -207,4 +207,3 @@ void draw_board(char *B, int rows, int cols) {
     }
     printf("──┘\n");
 }
-

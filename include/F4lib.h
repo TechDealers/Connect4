@@ -31,6 +31,8 @@ void err_exit(const char *msg);
 void sem_wait(int semid);
 void sem_release(int semid);
 
+void clear_resources();
+
 #define NEW_CONNECTION_MSGKEY ftok("src/F4Server.c", 1)
 
 #define STRSIZE 32
@@ -87,38 +89,38 @@ enum GameMsgType {
     Continue,
 };
 
-typedef enum GameMsgType MsgKind;
-
-typedef struct {
-    long mtype;
-
-    union {
-        union {
-            struct {
-                char name[STRSIZE];
-            } req;
-
-            Resources res;
-        } new_connection;
-
-        union {
-            struct {
-                int player_id;
-            } req;
-
-            void *res;
-        } disconnect;
-
-        union {
-            struct {
-                int player_id;
-                int col;
-            } req;
-
-            MsgKind res;
-        } move;
-    } mdata;
-} Msg;
+// typedef enum GameMsgType MsgKind;
+//
+// typedef struct {
+//     long mtype;
+//
+//     union {
+//         union {
+//             struct {
+//                 char name[STRSIZE];
+//             } req;
+//
+//             Resources res;
+//         } new_connection;
+//
+//         union {
+//             struct {
+//                 int player_id;
+//             } req;
+//
+//             void *res;
+//         } disconnect;
+//
+//         union {
+//             struct {
+//                 int player_id;
+//                 int col;
+//             } req;
+//
+//             MsgKind res;
+//         } move;
+//     } mdata;
+// } Msg;
 
 typedef struct {
     int player_id;

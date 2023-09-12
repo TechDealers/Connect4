@@ -68,10 +68,11 @@ void err_exit(const char *msg) {
 void exithandler(int sig) {
     // Announce to players game will shutdown
     for (int i = 0; i < 2; ++i){
-        int pid = game->players[i].pid;
-        if(kill(pid, SIGUSR1) == -1) {
+        Player player = game->players[i];
+        if(kill(player.pid, SIGUSR1) == -1) {
             info("Failed to send signal\n");
         }
+        semctl(player.semid, 0, IPC_RMID);
     }
     clear_resources();
     exit(0);
@@ -79,9 +80,7 @@ void exithandler(int sig) {
 
 
 void warnhandler(int sig) {
-    // sigint_received = 1;
     info("Press Ctrl+C again to terminate the program\n");
-    // signal(sig, SIG_IGN);
     signal(sig, exithandler);
 }
 void clear_resources() {
@@ -95,14 +94,6 @@ void clear_resources() {
     }
     shmdt(board);
 
-    // Semaphores
-    info("cleaning semaphores\n");
-    for (int i = 0; i < 2; ++i) {
-        if(semctl(game->players[i].semid, 0, IPC_RMID) == -1) {
-            info("Error cleaning semaphore\n");
-        }
-    }
-
     // Shared Memory for game data
     info("cleaning game shm\n");
    
@@ -112,14 +103,14 @@ void clear_resources() {
     shmdt(game);
 
     // Queues
-    info("cleaning queues\n");
+    info("cleaning msg queues\n");
     if(msgctl(game_msqid, IPC_RMID, NULL) == -1) {
         info("Error cleaning game msqid\n");
     }
     if(msgctl(new_connection_msqid, IPC_RMID, NULL) == -1) {
         info("Error cleaning new connection msqid\n");
     }
-    
+
     info("Finished cleaning\n");
 }
 
@@ -382,15 +373,6 @@ int main(int argc, char **argv) {
                         // release both clients so they can exit gracefully
                         for (int i = 0; i < 2; ++i) {
                             sem_release(game->players[i].semid);
-                        }
-
-
-                        // we could probably block the server using another semaphore XD
-                        while(kill(game->players[game->curr_player_id].pid, 0) == 0)
-                            ;
-
-                        if (errno == ESRCH) {
-                            info("Quitting\n");
                         }
 
                         break;

@@ -10,7 +10,6 @@
 #define CLIENT_DATA_SHMKEY ftok("src/F4Server.c", getpid() + 4)
 
 // necessary global variables
-int board_shmid;
 char *board;
 int game_shmid;
 Game *game;
@@ -25,8 +24,6 @@ bool game_over(char *B, int i, int j);
 bool game_tie(char *B);
 
 enum GameMsgType insert_symbol(char *B, char symbol, int j);
-
-void clear_resources();
 
 union semun {
     int              val;    /* Value for SETVAL */
