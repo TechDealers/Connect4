@@ -60,6 +60,7 @@ typedef struct {
     int game_shmid;
     int game_msqid;
     int player_id;
+    int timeout;
 } Resources;
 
 enum NewConnectionMsgType { NewConnection = 1, NameAlreadyTaken = 2 };

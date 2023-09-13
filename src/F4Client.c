@@ -18,8 +18,17 @@ void err_exit(const char *msg) {
     exit(1);
 }
 
-void clear_resources() {
-    semctl(data.semid, 0, IPC_RMID);
+void clear_resources() { semctl(player.semid, 0, IPC_RMID); }
+
+void sigalarmhandler(int code) {
+    info("\nUser timed out!\n");
+    GameMsg msg = {.mtype = Disconnect,
+                   .mdata = {.player_id = resources.player_id,
+                             .move = {.col = -1, .token = '\0'}}};
+
+    game_msgsnd(resources.game_msqid, &msg);
+    clear_resources();
+    exit(0);
 }
 
 void sigusr1handler(int code) {
@@ -30,17 +39,10 @@ void sigusr1handler(int code) {
 
 void siginthandler(int code) {
     info("\nUser abandoned the game!\n");
-    GameMsg msg = {
-        .mtype = Disconnect,
-        .mdata = {
-            .player_id = resources.player_id,
-            .move = {
-                .col = -1,
-                .token = '\0'
-            }
-        }
-    };
-    
+    GameMsg msg = {.mtype = Disconnect,
+                   .mdata = {.player_id = resources.player_id,
+                             .move = {.col = -1, .token = '\0'}}};
+
     game_msgsnd(resources.game_msqid, &msg);
     clear_resources();
     exit(0);
@@ -53,8 +55,8 @@ int get_random_move(int MIN, int MAX) {
 int main(int argc, char **argv) {
     bool computer = false;
     int pid = getpid();
-    
-    if(argc == 3) {
+
+    if (argc == 3) {
         if (*argv[2] == '*') {
             computer = true;
         }
@@ -68,21 +70,26 @@ int main(int argc, char **argv) {
         }
     }
 
-    signal(SIGUSR1, sigusr1handler);
-    signal(SIGINT, siginthandler);
+    if (
+        signal(SIGUSR1, sigusr1handler) == SIG_ERR ||
+        signal(SIGINT, siginthandler) == SIG_ERR ||
+        signal(SIGALRM, sigalarmhandler) == SIG_ERR
+    ) {
+        err_exit("Error while setting signal handlers\n");
+    }
 
     // Get new connection queue
     int new_connection_msqid =
         msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
 
     char name[STRSIZE];
-    if (pid == 0){
+    if (pid == 0) {
         strcpy(name, "Computer");
     } else {
         strcpy(name, argv[1]);
     }
 
-     // Create new connection obj
+    // Create new connection obj
     NewConnectionMsg new_connection_msg;
     bool invalid = false; // is username valid?
     do {
@@ -112,23 +119,23 @@ int main(int argc, char **argv) {
     char *board = shmat(game->board_shmid, NULL, SHM_RDONLY);
 
     // init client data
-    data = game->players[resources.player_id];
-    strcpy(data.name, name);
+    player = game->players[resources.player_id];
+    strcpy(player.name, name);
 
     while (true) {
         // Block semaphore
         info("Waiting for the next player...\n");
-        sem_wait(data.semid);
+        sem_wait(player.semid);
 
         draw_board(board, game->board_rows, game->board_cols);
 
         if (game->game_over) {
             if (game->num_players == 1) {
-                info("Player Disconnected!\n");
+                info("Other Player Disconnected!\n");
                 info("YOU WIN!\n");
             } else if (strcmp(game->winner, "\0") == 0) {
                 info("DRAW\n");
-            } else if (strcmp(data.name, game->winner) == 0) {
+            } else if (strcmp(player.name, game->winner) == 0) {
                 info("YOU WIN!\n");
             } else {
                 info("YOU LOSE!\n");
@@ -141,31 +148,33 @@ int main(int argc, char **argv) {
         GameMsg msg;
         do {
             int col;
-            
-            if (pid == 0){
+
+            if (pid == 0) {
                 col = get_random_move(0, game->board_cols - 1);
             } else {
+                alarm(resources.timeout);
                 // Ask user for input
                 info("Insert column: ");
                 scanf("%d", &col);
+                alarm(0);
             }
 
             // Send move to server
             msg.mtype = Move;
             msg.mdata.move.col = col;
-            msg.mdata.move.token = data.token;
-            msg.mdata.player_id = data.semid;
+            msg.mdata.move.token = player.token;
+            msg.mdata.player_id = resources.player_id;
 
             // send move
             if (game->num_players < 2) {
                 info("Move ignored, not enough players.\n");
                 break;
-            } 
+            }
             game_msgsnd(resources.game_msqid, &msg);
             // wait for server response
             game_msgrcv(resources.game_msqid, &msg);
         } while (msg.mtype == ColFull || msg.mtype == ColInvalid);
-        
+
         draw_board(board, game->board_rows, game->board_cols);
     }
 

@@ -1,8 +1,8 @@
+#include <signal.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
-#include <stdio.h>
-#include <signal.h>
 #include <unistd.h>
 
 #include "F4Server.h"
@@ -57,6 +57,8 @@ void check_args(int argc, char *argv[]) {
 }
 
 void err_exit(const char *msg) {
+    // when interrupted by <Ctrl-c>, don't clear resources
+    // as that would be handled by `exithandler`
     if (errno == EINTR) {
         return;
     }
@@ -67,9 +69,9 @@ void err_exit(const char *msg) {
 
 void exithandler(int sig) {
     // Announce to players game will shutdown
-    for (int i = 0; i < 2; ++i){
+    for (int i = 0; i < 2; ++i) {
         Player player = game->players[i];
-        if(kill(player.pid, SIGUSR1) == -1) {
+        if (kill(player.pid, SIGUSR1) == -1) {
             info("Failed to send signal\n");
         }
         semctl(player.semid, 0, IPC_RMID);
@@ -77,7 +79,6 @@ void exithandler(int sig) {
     clear_resources();
     exit(0);
 }
-
 
 void warnhandler(int sig) {
     info("Press Ctrl+C again to terminate the program\n");
@@ -88,26 +89,26 @@ void clear_resources() {
 
     // Shared Memory for board
     info("cleaning board shm\n");
-    
-    if(shmctl(game->board_shmid, IPC_RMID, NULL) == -1){
+
+    if (shmctl(game->board_shmid, IPC_RMID, NULL) == -1) {
         info("Error cleaning board\n");
     }
     shmdt(board);
 
     // Shared Memory for game data
     info("cleaning game shm\n");
-   
-    if(shmctl(game_shmid, IPC_RMID, NULL) == -1) {
+
+    if (shmctl(game_shmid, IPC_RMID, NULL) == -1) {
         info("Error cleaning game\n");
     }
     shmdt(game);
 
     // Queues
     info("cleaning msg queues\n");
-    if(msgctl(game_msqid, IPC_RMID, NULL) == -1) {
+    if (msgctl(game_msqid, IPC_RMID, NULL) == -1) {
         info("Error cleaning game msqid\n");
     }
-    if(msgctl(new_connection_msqid, IPC_RMID, NULL) == -1) {
+    if (msgctl(new_connection_msqid, IPC_RMID, NULL) == -1) {
         info("Error cleaning new connection msqid\n");
     }
 
@@ -227,6 +228,7 @@ void init_player(NewConnectionMsg *msg, int player_id) {
     // Send game info to client
     msg->mdata.res.game_shmid = game_shmid;
     msg->mdata.res.game_msqid = game_msqid;
+    msg->mdata.res.timeout = 30;
 }
 
 void init_player_error(NewConnectionMsg *msg, enum NewConnectionMsgType error) {
@@ -321,8 +323,7 @@ int main(int argc, char **argv) {
         info("Current player id: %d\n", game->curr_player_id);
 
         // Get current player info
-        int curr_player_semid =
-            game->players[game->curr_player_id].semid;
+        int curr_player_semid = game->players[game->curr_player_id].semid;
         char *username = game->players[game->curr_player_id].name;
 
         info("Unlocking player: %d\n", curr_player_semid);
@@ -338,75 +339,75 @@ int main(int argc, char **argv) {
         if (game_msgrcv(game_msqid, &msg) != -1) {
             info("message recieved, %lu\n", msg.mtype);
             switch (msg.mtype) {
-                case Move: {
-                    info("On Move\n");
-                    GameMsgData md = msg.mdata;
-                    msg.mtype = insert_symbol(board, md.move.token, md.move.col);
+            case Move: {
+                info("On Move\n");
+                GameMsgData md = msg.mdata;
+                msg.mtype = insert_symbol(board, md.move.token, md.move.col);
 
-                    if (msg.mtype == GameTie) {
-                        printf("Skill Issue\n");
-                        strcpy(game->winner, "\0");
-                        // Set global game over
-                        game->game_over = true;
-                        game_msgsnd(game_msqid, &msg);
-                        info("Game Tie!\n");
-
-                        // release both clients so they can exit gracefully
-                        for (int i = 0; i < 2; ++i) {
-                            sem_release(game->players[i].semid);
-                        }
-                        break;
-                    }
-
-                    // Game over
-                    if (msg.mtype == GameOver) {
-                        info("%s is the winner!\n", username);
-                        // Copy user name to game->winner
-                        strcpy(game->winner, username);
-                        // Set global game over
-                        game->game_over = true;
-
-                        // Send game over message
-                        game_msgsnd(game_msqid, &msg);
-                        info("Game over!\n");
-
-                        // release both clients so they can exit gracefully
-                        for (int i = 0; i < 2; ++i) {
-                            sem_release(game->players[i].semid);
-                        }
-
-                        break;
-                    }
-
-
-                    // Handle user turns
-                    if (msg.mtype == Continue) {
-                        info("move result: %lu\n", msg.mtype);
-                        game->curr_player_id = (game->curr_player_id + 1) % 2;
-                    }
-
-                    game_msgsnd(game_msqid, &msg);
-
-                    prev_player_semid = curr_player_semid;
-                    break;
-                }
-                case Disconnect: {
-                    info("Player %lu disconnected\n", msg.mdata.player_id);
-                    int other_player_id = (msg.mdata.player_id + 1) % 2;
-                    strcpy(game->winner, game->players[other_player_id].name);
+                if (msg.mtype == GameTie) {
+                    strcpy(game->winner, "\0");
+                    // Set global game over
                     game->game_over = true;
-                    game->num_players--;
-                    sem_release(game->players[other_player_id].semid);
-                    msg.mtype = Disconnect;
                     game_msgsnd(game_msqid, &msg);
+                    info("Game Tie!\n");
+
+                    // release both clients so they can exit gracefully
+                    for (int i = 0; i < 2; ++i) {
+                        sem_release(game->players[i].semid);
+                    }
                     break;
                 }
-                default: {
-                    info("On default\n");
+
+                // Game over
+                if (msg.mtype == GameOver) {
+                    info("%s is the winner!\n", username);
+                    // Copy user name to game->winner
+                    strcpy(game->winner, username);
+                    // Set global game over
+                    game->game_over = true;
+
+                    // Send game over message
+                    game_msgsnd(game_msqid, &msg);
+                    info("Game over!\n");
+
+                    // release both clients so they can exit gracefully
+                    for (int i = 0; i < 2; ++i) {
+                        sem_release(game->players[i].semid);
+                    }
+
                     break;
                 }
+
+                // Handle user turns
+                if (msg.mtype == Continue) {
+                    info("move result: %lu\n", msg.mtype);
+                    game->curr_player_id = (md.player_id + 1) % 2;
+                }
+
+                game_msgsnd(game_msqid, &msg);
+
+                prev_player_semid = curr_player_semid;
+                break;
+            }
+            case Disconnect: {
+                info("Player %lu disconnected\n", msg.mdata.player_id);
+                int other_player_id = (msg.mdata.player_id + 1) % 2;
+                strcpy(game->winner, game->players[other_player_id].name);
+                game->game_over = true;
+                game->num_players--;
+                sem_release(game->players[other_player_id].semid);
+                game_msgsnd(game_msqid, &msg);
+                break;
+            }
+            default: {
+                info("On default\n");
+                break;
+            }
             }
         }
     } while (!game->game_over);
+
     clear_resources();
+
+    return 0;
 }

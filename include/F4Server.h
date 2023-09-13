@@ -1,7 +1,6 @@
 #ifndef F4Server_h
 #define F4Server_h
 
-#include <unistd.h>
 #include "F4lib.h"
 
 #define GAME_SHMKEY ftok("src/F4Server.c", getpid() + 1)
@@ -26,11 +25,11 @@ bool game_tie(char *B);
 enum GameMsgType insert_symbol(char *B, char symbol, int j);
 
 union semun {
-    int              val;    /* Value for SETVAL */
-    struct semid_ds *buf;    /* Buffer for IPC_STAT, IPC_SET */
-    unsigned short  *array;  /* Array for GETALL, SETALL */
-    struct seminfo  *__buf;  /* Buffer for IPC_INFO
-                                (Linux-specific) */
+    int val;               /* Value for SETVAL */
+    struct semid_ds *buf;  /* Buffer for IPC_STAT, IPC_SET */
+    unsigned short *array; /* Array for GETALL, SETALL */
+    struct seminfo *__buf; /* Buffer for IPC_INFO
+                              (Linux-specific) */
 };
 
 #endif

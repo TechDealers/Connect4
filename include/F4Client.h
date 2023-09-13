@@ -4,7 +4,7 @@
 #include "F4lib.h"
 
 Resources resources;
-Player data;
+Player player;
 
 void draw_board(char *B, int rows, int cols);
 void siginthandler(int code);
