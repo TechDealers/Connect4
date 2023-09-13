@@ -1,32 +1,36 @@
 {
-  description = "virtual environments";
+  description = "Description for the project";
 
-  inputs.devshell.url = "github:numtide/devshell";
-  inputs.flake-utils.url = "github:numtide/flake-utils";
-  outputs = {
-    self,
-    flake-utils,
-    devshell,
-    nixpkgs,
-  }:
-    flake-utils.lib.eachDefaultSystem (system: {
-      devShell = let
-        pkgs = import nixpkgs {
-          inherit system;
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    devenv.url = "github:cachix/devenv";
+  };
 
-          overlays = [
-            devshell.overlays.default
-          ];
+  outputs = inputs @ {flake-parts, ...}:
+    flake-parts.lib.mkFlake {inherit inputs;} ({...}: {
+      imports = [
+        inputs.devenv.flakeModule
+      ];
+
+      systems = ["x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin"];
+      perSystem = {
+        config,
+        self',
+        inputs',
+        pkgs,
+        system,
+        ...
+      }: {
+        devenv.shells.default = {
+          name = "Connect 4";
+
+          packages = with pkgs; [python311 bear];
+
+          languages.c.enable = true;
         };
-      in
-        pkgs.devshell.mkShell {
-          name = "C env";
-
-          packages = with pkgs; [
-            gcc
-            gnumake
-            bear
-          ];
-        };
+      };
+      flake = {
+      };
     });
 }
