@@ -254,6 +254,15 @@ void accept_conn() {
         if (game->num_players == 0) {
             init_player(&new_connection_msg, 0);
 
+            if(new_connection_msg.mdata.req.computer){
+                int pid;
+                if((pid = fork()) == -1) {
+                    err_exit("Error on fork");
+                } else if (pid == 0) {
+                    execl("./bin/F4Client", "./bin/F4Client", "computer", (char *) NULL);
+                }
+            }
+
             // Send message to client
             new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
 

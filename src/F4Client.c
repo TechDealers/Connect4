@@ -59,25 +59,28 @@ int get_random_move(int MIN, int MAX) {
 }
 
 int main(int argc, char **argv) {
-    bool computer = false;
-    int pid = getpid();
+    bool is_computer = false; // Check if client process is the computer process
+    bool request_computer = false; // Request to play against computer
 
-    if (argc == 3) {
-        if (*argv[2] == '*') {
-            computer = true;
+    if(argc == 2) {
+        if (strcmp(argv[1], "computer") == 0){
+            is_computer = true;
         }
     }
 
-    if (computer) {
-        pid = fork();
-        if (pid == 0) {
-            close(STDOUT_FILENO);
-            int fd = open("computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
-            if (fd == -1) {
-                perror("unable to create computer.txt");
-            }
-            srand(time(NULL));
+    if (argc == 3) {
+        if (*argv[2] == '*') {
+            request_computer = true;
         }
+    }
+
+    if (is_computer) {
+        close(STDOUT_FILENO);
+        int fd = open("computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
+        if (fd == -1) {
+            perror("unable to create computer.txt");
+        }
+        srand(time(NULL));
     }
 
     if (
@@ -93,11 +96,7 @@ int main(int argc, char **argv) {
         msgget(NEW_CONNECTION_MSGKEY, IPC_CREAT | S_IRUSR | S_IWUSR);
 
     char name[STRSIZE];
-    if (pid == 0) {
-        strcpy(name, "Computer");
-    } else {
-        strcpy(name, argv[1]);
-    }
+    strcpy(name, argv[1]);
 
     // Create new connection obj
     NewConnectionMsg new_connection_msg;
@@ -109,6 +108,8 @@ int main(int argc, char **argv) {
         strcpy(new_connection_msg.mdata.req.name, name);
         // send pid to server
         new_connection_msg.mdata.req.pid = getpid();
+        // Check if we are in auto mode;
+        new_connection_msg.mdata.req.computer = request_computer;
         // Send msg
         new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
         // Receive confirmation or error
@@ -160,7 +161,7 @@ int main(int argc, char **argv) {
         do {
             int col;
 
-            if (pid == 0) {
+            if (is_computer) {
                 col = get_random_move(0, game->board_cols - 1);
                 printf("computer move: %d\n", col);
             } else {

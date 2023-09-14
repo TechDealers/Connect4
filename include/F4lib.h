@@ -70,6 +70,7 @@ typedef struct {
         struct {
             char name[STRSIZE];
             int pid;
+            bool computer;
         } req;
 
         Resources res;
