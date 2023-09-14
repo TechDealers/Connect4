@@ -1,3 +1,9 @@
+/************************************
+* VR471635 - VR472194 - VR497290
+* Michael Cisse - Abel Hristodor - Safouane Ben Baa
+* 14/09/2023
+*************************************/
+
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>

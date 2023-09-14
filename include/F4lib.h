@@ -1,9 +1,8 @@
-//
-//  F4lib.h
-//
-//
-//  Created by Safouane Ben Baa on 25/04/2023.
-//
+/************************************
+* VR471635 - VR472194 - VR497290
+* Michael Cisse - Abel Hristodor - Safouane Ben Baa
+* 14/09/2023
+*************************************/
 
 #ifndef F4lib_h
 #define F4lib_h
