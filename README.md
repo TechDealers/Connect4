@@ -33,6 +33,8 @@ example:
 ./bin/F4Client my_name
 ```
 
+**NOTE:** the username `computer` is system reserved.
+
 
 ## Automatic
 Start `./bin/F4Server` with the following supported parameters:
