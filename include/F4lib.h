@@ -28,8 +28,8 @@ void info(const char *format, ...);
 void sem_op(int semid, unsigned short sem_num, short sem_op);
 void err_exit(const char *msg);
 
-void sem_wait(int semid);
-void sem_release(int semid);
+void sem_wait(int semid, int val);
+void sem_release(int semid, int val);
 
 void clear_resources();
 

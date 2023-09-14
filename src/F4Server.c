@@ -330,7 +330,8 @@ int main(int argc, char **argv) {
         if (prev_player_semid == -1 ||
             (prev_player_semid != curr_player_semid)) {
             // Unlock other player's semaphore
-            sem_release(curr_player_semid);
+            // sem_release(curr_player_semid, 1);
+            sem_op(curr_player_semid, 0, 1);
         }
 
         // Game loop
@@ -353,7 +354,8 @@ int main(int argc, char **argv) {
 
                     // release both clients so they can exit gracefully
                     for (int i = 0; i < 2; ++i) {
-                        sem_release(game->players[i].semid);
+                        // sem_release(game->players[i].semid, 1);
+                        sem_op(game->players[i].semid, 0, 1);
                     }
                     break;
                 }
@@ -372,7 +374,8 @@ int main(int argc, char **argv) {
 
                     // release both clients so they can exit gracefully
                     for (int i = 0; i < 2; ++i) {
-                        sem_release(game->players[i].semid);
+                        // sem_release(game->players[i].semid, 1);
+                        sem_op(game->players[i].semid, 0, 1);
                     }
 
                     break;
@@ -382,11 +385,16 @@ int main(int argc, char **argv) {
                 if (msg.mtype == Continue) {
                     info("move result: %lu\n", msg.mtype);
                     game->curr_player_id = (md.player_id + 1) % 2;
+                    prev_player_semid = curr_player_semid;
+                } 
+
+
+                if(msg.mtype == ColFull || msg.mtype == ColInvalid) {
+                    printf("Received wrong move of type: %lu from user: %s\n", msg.mtype, username);
+                    printf("Received wrong move: %d\n", md.move.col);
                 }
 
                 game_msgsnd(game_msqid, &msg);
-
-                prev_player_semid = curr_player_semid;
                 break;
             }
             case Disconnect: {
@@ -395,7 +403,7 @@ int main(int argc, char **argv) {
                 strcpy(game->winner, game->players[other_player_id].name);
                 game->game_over = true;
                 game->num_players--;
-                sem_release(game->players[other_player_id].semid);
+                sem_op(game->players[other_player_id].semid, 0, 1);
                 game_msgsnd(game_msqid, &msg);
                 break;
             }

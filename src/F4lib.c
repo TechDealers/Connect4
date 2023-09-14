@@ -7,9 +7,9 @@ void sem_op(int semid, unsigned short sem_num, short sem_op) {
         err_exit("semop failed");
 }
 
-void sem_wait(int semid) {
+void sem_wait(int semid, int val) {
     // Lock the semaphore - decrement it by 1
-    sem_op(semid, 0, -1);
+    sem_op(semid, 0, val);
 }
 
 void info(const char *format, ...) {
@@ -22,9 +22,9 @@ void info(const char *format, ...) {
     va_end(args);
 }
 
-void sem_release(int semid) {
+void sem_release(int semid, int val) {
     // Unlock the semaphore - increment it by 1
-    sem_op(semid, 0, 1);
+    sem_op(semid, 0, val);
 }
 
 int new_connection_msgsnd(int new_connection_msqid, NewConnectionMsg *msg) {

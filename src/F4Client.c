@@ -66,6 +66,10 @@ int main(int argc, char **argv) {
         pid = fork();
         if (pid == 0) {
             close(STDOUT_FILENO);
+            int fd = open("computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
+            if (fd == -1) {
+                perror("unable to create computer.txt");
+            }
             srand(time(NULL));
         }
     }
@@ -125,7 +129,8 @@ int main(int argc, char **argv) {
     while (true) {
         // Block semaphore
         info("Waiting for the next player...\n");
-        sem_wait(player.semid);
+        // sem_wait(player.semid);
+        sem_op(player.semid, 0, -1);
 
         draw_board(board, game->board_rows, game->board_cols);
 
@@ -151,6 +156,7 @@ int main(int argc, char **argv) {
 
             if (pid == 0) {
                 col = get_random_move(0, game->board_cols - 1);
+                printf("computer move: %d\n", col);
             } else {
                 alarm(resources.timeout);
                 // Ask user for input
