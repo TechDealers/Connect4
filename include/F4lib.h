@@ -71,8 +71,7 @@ typedef struct {
         struct {
             char name[STRSIZE];
             int pid;
-            bool request_computer;
-            bool is_computer;
+            bool computer;
         } req;
 
         Resources res;
@@ -91,6 +90,39 @@ enum GameMsgType {
     GameTie,
     Continue,
 };
+
+// typedef enum GameMsgType MsgKind;
+//
+// typedef struct {
+//     long mtype;
+//
+//     union {
+//         union {
+//             struct {
+//                 char name[STRSIZE];
+//             } req;
+//
+//             Resources res;
+//         } new_connection;
+//
+//         union {
+//             struct {
+//                 int player_id;
+//             } req;
+//
+//             void *res;
+//         } disconnect;
+//
+//         union {
+//             struct {
+//                 int player_id;
+//                 int col;
+//             } req;
+//
+//             MsgKind res;
+//         } move;
+//     } mdata;
+// } Msg;
 
 typedef struct {
     int player_id;
