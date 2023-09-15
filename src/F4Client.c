@@ -1,8 +1,8 @@
 /************************************
-* VR471635 - VR472194 - VR497290
-* Michael Cisse - Abel Hristodor - Safouane Ben Baa
-* 14/09/2023
-*************************************/
+ * VR471635 - VR472194 - VR497290
+ * Michael Cisse - Abel Hristodor - Safouane Ben Baa
+ * 14/09/2023
+ *************************************/
 
 #include <fcntl.h>
 #include <stdbool.h>
@@ -33,13 +33,11 @@ void sigalarmhandler(int code) {
                              .move = {.col = -1, .token = '\0'}}};
 
     game_msgsnd(resources.game_msqid, &msg);
-    // clear_resources();
     exit(0);
 }
 
 void sigusr1handler(int code) {
     printf("\nGame is shutting down!\n");
-    // clear_resources();
     exit(0);
 }
 
@@ -50,7 +48,6 @@ void siginthandler(int code) {
                              .move = {.col = -1, .token = '\0'}}};
 
     game_msgsnd(resources.game_msqid, &msg);
-    // clear_resources();
     exit(0);
 }
 
@@ -62,8 +59,8 @@ int main(int argc, char **argv) {
     bool is_computer = false; // Check if client process is the computer process
     bool request_computer = false; // Request to play against computer
 
-    if(argc == 2) {
-        if (strcmp(argv[1], "computer") == 0){
+    if (argc == 2) {
+        if (strcmp(argv[1], "computer") == 0) {
             is_computer = true;
         }
     }
@@ -72,23 +69,6 @@ int main(int argc, char **argv) {
         if (*argv[2] == '*') {
             request_computer = true;
         }
-    }
-
-    if (is_computer) {
-        close(STDOUT_FILENO);
-        int fd = open("logs/computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
-        if (fd == -1) {
-            perror("unable to create computer.txt");
-        }
-        srand(time(NULL));
-    }
-
-    if (
-        signal(SIGUSR1, sigusr1handler) == SIG_ERR ||
-        signal(SIGINT, siginthandler) == SIG_ERR ||
-        signal(SIGALRM, sigalarmhandler) == SIG_ERR
-    ) {
-        err_exit("Error while setting signal handlers\n");
     }
 
     // Get new connection queue
@@ -108,7 +88,9 @@ int main(int argc, char **argv) {
     // send pid to server
     new_connection_msg.mdata.req.pid = getpid();
     // Check if we are in auto mode;
-    new_connection_msg.mdata.req.computer = request_computer;
+    new_connection_msg.mdata.req.request_computer = request_computer;
+    // Communicate to server if client is "computer"
+    new_connection_msg.mdata.req.is_computer = is_computer;
     // Send msg
     new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
     // Receive confirmation or error
@@ -118,6 +100,22 @@ int main(int argc, char **argv) {
     if (invalid) {
         info("username already taken\n");
         exit(1);
+    }
+
+    if (is_computer) {
+        close(STDOUT_FILENO);
+        int fd =
+            open("logs/computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
+        if (fd == -1) {
+            perror("unable to create computer.txt");
+        }
+        srand(time(NULL));
+    }
+
+    if (signal(SIGUSR1, sigusr1handler) == SIG_ERR ||
+        signal(SIGINT, siginthandler) == SIG_ERR ||
+        signal(SIGALRM, sigalarmhandler) == SIG_ERR) {
+        err_exit("Error while setting signal handlers\n");
     }
 
     // Get game resources
@@ -164,10 +162,12 @@ int main(int argc, char **argv) {
                 col = get_random_move(0, game->board_cols - 1);
                 printf("computer move: %d\n", col);
             } else {
+                // set timeout
                 alarm(resources.timeout);
                 // Ask user for input
-                info("Insert column: ");
+                printf("Insert column (%c): ", player.token);
                 scanf("%d", &col);
+                // reset timeout
                 alarm(0);
             }
 
@@ -183,7 +183,6 @@ int main(int argc, char **argv) {
                 break;
             }
             game_msgsnd(resources.game_msqid, &msg);
-            // Server semaphore is 
             // wait will server's ready
             sem_op(resources.server_semid, 0, -1);
             // server response

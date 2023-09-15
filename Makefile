@@ -21,4 +21,4 @@ compile_commands.json:
 	bear -- make F4Client
 
 zip:
-	tar -czvf assets/vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz --exclude '.git' --exclude *.tar.gz ./
+	tar -czvf assets/vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz --exclude 'bin/*' --exclude '.git' --exclude 'assets' --exclude '.cache' --exclude '.devenv' ./

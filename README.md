@@ -109,24 +109,28 @@ The client is made out of two phases:
 The file structure is the following:
 
 ```
-├── Makefile
-├── README.md
+├── assets
+│   └── vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz
 ├── bin
 │   ├── F4Client
 │   └── F4Server
-├── clean.sh
-├── computer.txt
+├── compile_commands.json
 ├── flake.lock
 ├── flake.nix
 ├── include
 │   ├── F4Client.h
-│   ├── F4Server.h
-│   └── F4lib.h
+│   ├── F4lib.h
+│   └── F4Server.h
+├── logs
+│   └── computer.txt
+├── Makefile
+├── README.md
 ├── src
 │   ├── F4Client.c
-│   ├── F4Server.c
-│   └── F4lib.c
-└── archive.tar.gz
+│   ├── F4lib.c
+│   └── F4Server.c
+└── utils
+    └── clean.sh
 ```
 
 Explanation:
@@ -139,5 +143,5 @@ Explanation:
 - `Makefile`: Makefile used to compile the project
 - `README.md`: This file
 - `bin`: Folder containing the compiled binaries
-- `clean.sh`: Shell script used to clean up the project
-- `computer.txt`: File containing the output of the computer process when running in automatic mode
+- `utils/clean.sh`: Shell script used to clean up the project
+- `logs/computer.txt`: File containing the output of the computer process when running in automatic mode
