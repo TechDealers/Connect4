@@ -15,4 +15,4 @@ compile_commands.json:
 	bear -- make F4Client
 
 zip:
-	tar -czvf vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz --exclude '.git' ./
+	tar -czvf vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz --exclude '.git' --exclude *.tar.gz ./
