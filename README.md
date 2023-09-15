@@ -103,3 +103,41 @@ The client is made out of two phases:
 
 - **Initialization**: The client connects to the server and waits for the game to start.
 - **Game loop**: The client waits for the server to unlock it, asks the user for a move and then sends it to the server. It then waits for the answer of the server and processes its response. If the game is over the client prints the result of the game and then runs some cleanup operations.
+
+## File structure
+
+The file structure is the following:
+
+```
+├── Makefile
+├── README.md
+├── bin
+│   ├── F4Client
+│   └── F4Server
+├── clean.sh
+├── computer.txt
+├── flake.lock
+├── flake.nix
+├── include
+│   ├── F4Client.h
+│   ├── F4Server.h
+│   └── F4lib.h
+├── src
+│   ├── F4Client.c
+│   ├── F4Server.c
+│   └── F4lib.c
+└── archive.tar.gz
+```
+
+Explanation:
+
+- `include`: Folder containing the header files
+- `include/F4Client.h`: Header file for the client
+- `include/F4Server.h`: Header file for the server
+- `include/F4lib.h`: Header file for the shared library -- contains most of the data structures used
+- `src`: Folder containing the source files
+- `Makefile`: Makefile used to compile the project
+- `README.md`: This file
+- `bin`: Folder containing the compiled binaries
+- `clean.sh`: Shell script used to clean up the project
+- `computer.txt`: File containing the output of the computer process when running in automatic mode
