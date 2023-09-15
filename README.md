@@ -83,3 +83,23 @@ example:
 - **Debugging computer**: When running in _automatic_ mode the `STDOUT_FILENO` file descriptor of the computer process is redirected to `computer.txt`. Mostly used for debugging purposes.
 
 - **Game endings**: Game supports: _win_, _loss_ and _tie_
+
+## Architecture
+
+The game consists of two main processes, the **server** and the **client**.
+The server is responsible for the game logic and the client is responsible for the user interface and handles user interactions.
+
+### Server
+
+The server decides if each move is valid and if the game is over and it is made out of three phases:
+
+- **Initialization**: The server creates the shared memory and the semaphores and initializes them.
+- **Player connection**: The server waits for two players to connect and then starts the game.
+- **Game loop**: The server waits for a player to make a move and then runs some checks to see if the move is valid and if the game is over. The server always answers to the client with a message containing the result of the move and the current state of the board. If the game is over the server sends the clients a message containing the result of the game and then runs some cleanup operations.
+
+### Client
+
+The client is made out of two phases:
+
+- **Initialization**: The client connects to the server and waits for the game to start.
+- **Game loop**: The client waits for the server to unlock it, asks the user for a move and then sends it to the server. It then waits for the answer of the server and processes its response. If the game is over the client prints the result of the game and then runs some cleanup operations.
