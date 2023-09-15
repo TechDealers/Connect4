@@ -20,6 +20,8 @@ int game_shmid;
 Game *game;
 int new_connection_msqid;
 int game_msqid;
+int server_semid;
+int computer_pid;
 
 bool out_of_bounds(int i, int j);
 
@@ -27,6 +29,7 @@ int count_in_direction(char *B, char symbol, int dx, int dy, int i, int j);
 
 bool game_over(char *B, int i, int j);
 bool game_tie(char *B);
+void accept_conn(int server_semid);
 
 enum GameMsgType insert_symbol(char *B, char symbol, int j);
 

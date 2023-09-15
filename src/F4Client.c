@@ -24,7 +24,7 @@ void err_exit(const char *msg) {
     exit(1);
 }
 
-void clear_resources() { semctl(player.semid, 0, IPC_RMID); }
+// void clear_resources() { semctl(player.semid, 0, IPC_RMID); }
 
 void sigalarmhandler(int code) {
     info("\nUser timed out!\n");
@@ -33,13 +33,13 @@ void sigalarmhandler(int code) {
                              .move = {.col = -1, .token = '\0'}}};
 
     game_msgsnd(resources.game_msqid, &msg);
-    clear_resources();
+    // clear_resources();
     exit(0);
 }
 
 void sigusr1handler(int code) {
     printf("\nGame is shutting down!\n");
-    clear_resources();
+    // clear_resources();
     exit(0);
 }
 
@@ -50,7 +50,7 @@ void siginthandler(int code) {
                              .move = {.col = -1, .token = '\0'}}};
 
     game_msgsnd(resources.game_msqid, &msg);
-    clear_resources();
+    // clear_resources();
     exit(0);
 }
 
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
 
     if (is_computer) {
         close(STDOUT_FILENO);
-        int fd = open("computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
+        int fd = open("logs/computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
         if (fd == -1) {
             perror("unable to create computer.txt");
         }
@@ -101,26 +101,24 @@ int main(int argc, char **argv) {
     // Create new connection obj
     NewConnectionMsg new_connection_msg;
     bool invalid = false; // is username valid?
-    do {
 
-        new_connection_msg.mtype = NewConnection;
-        // Copy name to msg
-        strcpy(new_connection_msg.mdata.req.name, name);
-        // send pid to server
-        new_connection_msg.mdata.req.pid = getpid();
-        // Check if we are in auto mode;
-        new_connection_msg.mdata.req.computer = request_computer;
-        // Send msg
-        new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
-        // Receive confirmation or error
-        new_connection_msgrcv(new_connection_msqid, &new_connection_msg);
+    new_connection_msg.mtype = NewConnection;
+    // Copy name to msg
+    strcpy(new_connection_msg.mdata.req.name, name);
+    // send pid to server
+    new_connection_msg.mdata.req.pid = getpid();
+    // Check if we are in auto mode;
+    new_connection_msg.mdata.req.computer = request_computer;
+    // Send msg
+    new_connection_msgsnd(new_connection_msqid, &new_connection_msg);
+    // Receive confirmation or error
+    new_connection_msgrcv(new_connection_msqid, &new_connection_msg);
 
-        invalid = new_connection_msg.mtype == NameAlreadyTaken;
-        if (invalid) {
-            info("username already taken\n");
-        }
-
-    } while (invalid);
+    invalid = new_connection_msg.mtype == NameAlreadyTaken;
+    if (invalid) {
+        info("username already taken\n");
+        exit(1);
+    }
 
     // Get game resources
     resources = new_connection_msg.mdata.res;
@@ -132,12 +130,14 @@ int main(int argc, char **argv) {
     // init client data
     player = game->players[resources.player_id];
     strcpy(player.name, name);
+    GameMsg msg;
 
     while (true) {
         // Block semaphore
         info("Waiting for the next player...\n");
-        // sem_wait(player.semid);
         sem_op(player.semid, 0, -1);
+        // wait till server's ready
+        sem_op(resources.server_semid, 0, -1);
 
         draw_board(board, game->board_rows, game->board_cols);
 
@@ -157,7 +157,6 @@ int main(int argc, char **argv) {
             break;
         }
 
-        GameMsg msg;
         do {
             int col;
 
@@ -184,14 +183,16 @@ int main(int argc, char **argv) {
                 break;
             }
             game_msgsnd(resources.game_msqid, &msg);
-            // wait for server response
+            // Server semaphore is 
+            // wait will server's ready
+            sem_op(resources.server_semid, 0, -1);
+            // server response
             game_msgrcv(resources.game_msqid, &msg);
         } while (msg.mtype == ColFull || msg.mtype == ColInvalid);
 
         draw_board(board, game->board_rows, game->board_cols);
     }
-
-    clear_resources();
+    return 0;
 }
 
 void draw_board(char *B, int rows, int cols) {
