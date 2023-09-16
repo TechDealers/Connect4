@@ -31,6 +31,8 @@
         pkgs.devshell.mkShell {
           packages = with pkgs; [
             gnumake
+            gcc
+            clang-tools
             bear
           ];
         };

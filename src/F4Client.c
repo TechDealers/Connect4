@@ -110,11 +110,12 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    int computer_stdout = -1;
     if (is_computer) {
         close(STDOUT_FILENO);
-        int fd =
+        computer_stdout =
             open("logs/computer.txt", O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU);
-        if (fd == -1) {
+        if (computer_stdout == -1) {
             perror("unable to create computer.txt");
         }
         srand(time(NULL));
@@ -191,6 +192,10 @@ int main(int argc, char **argv) {
         } while (msg.mtype == ColFull || msg.mtype == ColInvalid);
 
         draw_board(board, game->board_rows, game->board_cols);
+    }
+
+    if (computer_stdout != -1) {
+        close(computer_stdout);
     }
 
     return 0;
