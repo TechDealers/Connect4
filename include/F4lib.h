@@ -71,7 +71,8 @@ typedef struct {
         struct {
             char name[STRSIZE];
             int pid;
-            bool computer;
+            bool request_computer;
+            bool is_computer;
         } req;
 
         Resources res;

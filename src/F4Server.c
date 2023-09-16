@@ -1,16 +1,16 @@
 /************************************
-* VR471635 - VR472194 - VR497290
-* Michael Cisse - Abel Hristodor - Safouane Ben Baa
-* 14/09/2023
-*************************************/
+ * VR471635 - VR472194 - VR497290
+ * Michael Cisse - Abel Hristodor - Safouane Ben Baa
+ * 14/09/2023
+ *************************************/
 
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/shm.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "F4Server.h"
 #include "F4lib.h"
@@ -76,7 +76,7 @@ void err_exit(const char *msg) {
 
 void exithandler(int sig) {
     // Announce to players game will shutdown
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < game->num_players; ++i) {
         Player player = game->players[i];
         if (kill(player.pid, SIGUSR1) == -1) {
             info("Failed to send signal\n");
@@ -88,6 +88,7 @@ void exithandler(int sig) {
 }
 
 void warnhandler(int sig) {
+    printf("\n");
     info("Press Ctrl+C again to terminate the program\n");
     signal(sig, exithandler);
 }
@@ -103,7 +104,7 @@ void clear_resources() {
     shmdt(board);
 
     // Clear player semaphores
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < game->num_players; ++i) {
         info("cleaning player %d sem\n", i);
         if (semctl(game->players[i].semid, 0, IPC_RMID) == -1) {
             info("Error cleaning player %d sem\n", i);
@@ -129,7 +130,7 @@ void clear_resources() {
 
     // Semaphores
     info("cleaning semaphores\n");
-    if(semctl(server_semid, 0, IPC_RMID) == -1) {
+    if (semctl(server_semid, 0, IPC_RMID) == -1) {
         info("Error cleaning server semaphore\n");
     }
 
@@ -262,10 +263,12 @@ void init_player_error(NewConnectionMsg *msg, enum NewConnectionMsgType error) {
     msg->mdata.res.game_msqid = -1;
     msg->mdata.res.game_shmid = -1;
     msg->mdata.res.player_id = -1;
+    msg->mdata.res.timeout = -1;
+    msg->mdata.res.server_semid = -1;
     msg->mtype = error;
 }
 
-void accept_conn(int server_semid) {
+void accept_conn() {
     while (game->num_players < 2) {
         NewConnectionMsg new_connection_msg;
 
@@ -276,16 +279,23 @@ void accept_conn(int server_semid) {
         new_connection_msg.mdata.res.server_semid = server_semid;
 
         if (game->num_players == 0) {
-            // initialize first player's resources
-            init_player(&new_connection_msg, 0);
 
             // Are we on auto mode? then fork and startup another client process
-            if(new_connection_msg.mdata.req.computer){
-                if((computer_pid = fork()) == -1) {
+            if (new_connection_msg.mdata.req.request_computer) {
+                if ((computer_pid = fork()) == -1) {
                     err_exit("Error on fork");
                 } else if (computer_pid == 0) {
-                    execl("./bin/F4Client", "./bin/F4Client", "computer", (char *) NULL);
+                    execl("./bin/F4Client", "./bin/F4Client", "computer",
+                          (char *)NULL);
                 }
+            }
+
+            // reject first player if name == "computer"
+            if (new_connection_msg.mdata.req.is_computer) {
+                init_player_error(&new_connection_msg, NameAlreadyTaken);
+            } else {
+                // initialize first player's resources
+                init_player(&new_connection_msg, 0);
             }
 
             // Send message to client
@@ -326,7 +336,7 @@ int main(int argc, char **argv) {
 
     // Seed random
     srand(time(NULL));
-    
+
     // Check arguments
     check_args(argc, argv);
 
@@ -350,7 +360,7 @@ int main(int argc, char **argv) {
     init_board(board);
 
     // init game state
-    game->num_players = 0; // Number of active players
+    game->num_players = 0;             // Number of active players
     game->curr_player_id = rand() % 2; // Random first player
 
     // Set player tokens
@@ -361,12 +371,13 @@ int main(int argc, char **argv) {
     memset(game->winner, 0, sizeof(char) * 32);
     game->game_over = false;
 
-    // Init server semaphore to 1 -- Used to block players from sending messages until server is ready
+    // Init server semaphore to 1 -- Used to block players from sending messages
+    // until server is ready
     server_semid = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
     semctl(server_semid, 0, SETVAL, 1);
 
     // Connections
-    accept_conn(server_semid); // Players are blocked
+    accept_conn(); // Players are blocked
 
     info("Game Started!\n");
 
@@ -390,18 +401,18 @@ int main(int argc, char **argv) {
                 GameMsgData md = msg.mdata;
                 msg.mtype = insert_symbol(board, md.move.token, md.move.col);
                 char *username;
-                
-                switch(msg.mtype) {
+
+                switch (msg.mtype) {
                 case GameTie:
                     // Copy user name to game->winner
                     strcpy(game->winner, "\0");
-                    
+
                     // Set global game over
                     game->game_over = true;
                     info("Game Tie!\n");
 
                     // release both clients so they can exit gracefully
-                    for (int i = 0; i < 2; ++i) {
+                    for (int i = 0; i < game->num_players; ++i) {
                         // sem_release(game->players[i].semid, 1);
                         sem_op(game->players[i].semid, 0, 1);
                     }
@@ -409,7 +420,7 @@ int main(int argc, char **argv) {
                     sem_op(server_semid, 0, 1);
                     game_msgsnd(game_msqid, &msg);
                     break;
-                
+
                 case GameOver:
                     // Find username
                     username = game->players[game->curr_player_id].name;
@@ -424,7 +435,7 @@ int main(int argc, char **argv) {
                     info("Game over!\n");
 
                     // release both clients so they can exit gracefully
-                    for (int i = 0; i < 2; ++i) {
+                    for (int i = 0; i < game->num_players; ++i) {
                         // sem_release(game->players[i].semid, 1);
                         sem_op(game->players[i].semid, 0, 1);
                     }
@@ -432,7 +443,7 @@ int main(int argc, char **argv) {
                     sem_op(server_semid, 0, 1);
                     game_msgsnd(game_msqid, &msg);
                     break;
-                
+
                 case Continue:
                     info("move result: %lu\n", msg.mtype);
 
@@ -440,7 +451,8 @@ int main(int argc, char **argv) {
                     game->curr_player_id = (md.player_id + 1) % 2;
 
                     // Get current player info
-                    int curr_player_semid = game->players[game->curr_player_id].semid;
+                    int curr_player_semid =
+                        game->players[game->curr_player_id].semid;
                     username = game->players[game->curr_player_id].name;
                     info("Unlocking player: %d\n", curr_player_semid);
 
@@ -451,7 +463,8 @@ int main(int argc, char **argv) {
                 case ColFull:
                 case ColInvalid:
                     username = game->players[game->curr_player_id].name;
-                    printf("Received wrong move of type: %lu from user: %s\n", msg.mtype, username);
+                    printf("Received wrong move of type: %lu from user: %s\n",
+                           msg.mtype, username);
                     printf("Received wrong move: %d\n", md.move.col);
 
                     game_msgsnd(game_msqid, &msg);
@@ -475,6 +488,8 @@ int main(int argc, char **argv) {
                 break;
             }
             }
+
+            // signal that server's ready
             sem_op(server_semid, 0, 1);
         }
     } while (!game->game_over && game->num_players != 0);
@@ -484,22 +499,25 @@ int main(int argc, char **argv) {
         int status;
         // Wait for child process to exit with wait
         info("waiting for computer player to exit\n");
-        if(wait(&status) == -1) {
+        if (wait(&status) == -1) {
             err_exit("Error on wait");
         }
-        
+
         info("computer player process exited with status: %d\n", status);
-        int other_pid = game->players[0].pid == computer_pid ? game->players[1].pid : game->players[0].pid;
-        
-        info("waiting for client to exit...\n");
-        while(!kill(other_pid, 0));
-        
+        int other_pid = game->players[0].pid == computer_pid
+                            ? game->players[1].pid
+                            : game->players[0].pid;
+
+        info("waiting for human player to exit...\n");
+        while (!kill(other_pid, 0))
+            ;
+
     } else {
         info("Waiting for clients to exit...\n");
-        while(!kill(game->players[0].pid, 0) || !kill(game->players[1].pid, 0));
+        while (!kill(game->players[0].pid, 0) || !kill(game->players[1].pid, 0))
+            ;
     }
 
-    info("We're out!\n");
     clear_resources();
 
     return 0;

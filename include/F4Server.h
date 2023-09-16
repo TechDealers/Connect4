@@ -29,7 +29,7 @@ int count_in_direction(char *B, char symbol, int dx, int dy, int i, int j);
 
 bool game_over(char *B, int i, int j);
 bool game_tie(char *B);
-void accept_conn(int server_semid);
+void accept_conn();
 
 enum GameMsgType insert_symbol(char *B, char symbol, int j);
 

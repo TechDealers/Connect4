@@ -2,3 +2,4 @@
 .direnv/
 .devenv/
 compile_commands.json
+logs/*
