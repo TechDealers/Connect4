@@ -1,8 +1,11 @@
 
-all: clean F4Client F4Server
+all: clean dirs F4Client F4Server
 
 clean:
 	./utils/clean.sh
+
+dirs:
+	mkdir -p bin logs
 
 server:
 	./bin/F4Server 5 5 X O
@@ -21,4 +24,16 @@ compile_commands.json:
 	bear -- make F4Client
 
 zip:
-	tar -czvf assets/vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz --exclude '.git' --exclude *.tar.gz ./
+	tar -czvf assets/vr471635.cisse.VR472194.hristodor.VR497290.benbaa.tar.gz \
+		--exclude '.git' \
+		--exclude '.cache' \
+		--exclude '.direnv' \
+		--exclude '.envrc' \
+		--exclude 'assets' \
+		--exclude 'bin/*' \
+		--exclude 'logs/*' \
+		--exclude '.clang-format' \
+		--exclude '.gitignore' \
+		--exclude 'compile_commands.json' \
+		--exclude 'flake.*' \
+		./

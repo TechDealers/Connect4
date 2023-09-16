@@ -3,3 +3,4 @@
 .devenv/
 compile_commands.json
 logs/*
+bin/*

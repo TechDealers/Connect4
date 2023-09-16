@@ -104,7 +104,7 @@ void clear_resources() {
     shmdt(board);
 
     // Clear player semaphores
-    for (int i = 0; i < game->num_players; ++i) {
+    for (int i = 0; i < 2; ++i) {
         info("cleaning player %d sem\n", i);
         if (semctl(game->players[i].semid, 0, IPC_RMID) == -1) {
             info("Error cleaning player %d sem\n", i);
@@ -402,6 +402,8 @@ int main(int argc, char **argv) {
                 msg.mtype = insert_symbol(board, md.move.token, md.move.col);
                 char *username;
 
+                username = game->players[game->curr_player_id].name;
+                info("%s's move on %d\n", username, md.move.col);
                 switch (msg.mtype) {
                 case GameTie:
                     // Copy user name to game->winner
@@ -454,7 +456,8 @@ int main(int argc, char **argv) {
                     int curr_player_semid =
                         game->players[game->curr_player_id].semid;
                     username = game->players[game->curr_player_id].name;
-                    info("Unlocking player: %d\n", curr_player_semid);
+                    info("Unlocking player: %s(%d)\n", username,
+                         curr_player_semid);
 
                     game_msgsnd(game_msqid, &msg);
                     sem_op(curr_player_semid, 0, 1);
@@ -465,7 +468,6 @@ int main(int argc, char **argv) {
                     username = game->players[game->curr_player_id].name;
                     printf("Received wrong move of type: %lu from user: %s\n",
                            msg.mtype, username);
-                    printf("Received wrong move: %d\n", md.move.col);
 
                     game_msgsnd(game_msqid, &msg);
                     break;
@@ -473,7 +475,9 @@ int main(int argc, char **argv) {
                 break;
             }
             case Disconnect: {
-                info("Player %lu disconnected\n", msg.mdata.player_id);
+                char *username = game->players[msg.mdata.player_id].name;
+                info("Player %s(id=%lu) disconnected\n", username,
+                     msg.mdata.player_id);
                 // get other player's id
                 int other_player_id = (msg.mdata.player_id + 1) % 2;
                 strcpy(game->winner, game->players[other_player_id].name);

@@ -192,6 +192,7 @@ int main(int argc, char **argv) {
 
         draw_board(board, game->board_rows, game->board_cols);
     }
+
     return 0;
 }
 
